@@ -1,0 +1,21 @@
+{
+  "name": "@field-sales/config",
+  "private": true,
+  "version": "0.0.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "tailwind-preset.js",
+  "files": [
+    "tsconfig.base.json",
+    "eslint-base.mjs",
+    "tailwind-preset.js"
+  ],
+  "dependencies": {
+    "@eslint/js": "^9.18.0",
+    "eslint-plugin-prettier": "^5.2.2",
+    "globals": "^17.0.0",
+    "prettier": "^3.4.2",
+    "typescript-eslint": "^8.20.0"
+  }
+}

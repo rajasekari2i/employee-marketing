@@ -1,0 +1,265 @@
+// Prisma schema for the Field Sales & Beat Execution API.
+// Models are added starting in work unit WU-02 (specs/001-company-user-auth) —
+// this file currently only declares the datasource and client generator.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums (WU-02 / T007)
+// ---------------------------------------------------------------------------
+
+enum CompanyStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum RoleKey {
+  SYSTEM_ADMIN
+  COMPANY_ADMIN
+  MANAGER
+  MARKETING_EXECUTIVE
+  EMPLOYEE
+}
+
+// PhotoKind.SHOP is added later by a different slice — do NOT add it here.
+enum PhotoKind {
+  USER_AVATAR
+}
+
+// ---------------------------------------------------------------------------
+// Company & settings (T008, T009)
+// ---------------------------------------------------------------------------
+
+model Company {
+  id           String        @id @default(uuid())
+  code         String        @unique
+  name         String
+  place        String?
+  contactEmail String?       @map("contact_email")
+  contactPhone String?       @map("contact_phone")
+  timezone     String        @default("Asia/Kolkata")
+  status       CompanyStatus @default(ACTIVE)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  settings CompanySettings?
+  roles    Role[]
+  users    User[]
+
+  @@map("companies")
+}
+
+model CompanySettings {
+  companyId String @id @map("company_id")
+
+  defaultRadiusMeters   Int      @default(5) @map("default_radius_meters")
+  maxAccuracyMeters     Int      @default(20) @map("max_accuracy_meters")
+  maxLocationAgeSeconds Int      @default(120) @map("max_location_age_seconds")
+  morningSessionStart   String   @default("09:00") @map("morning_session_start")
+  eveningSessionStart   String   @default("14:00") @map("evening_session_start")
+  delay1hMinutes        Int      @default(60) @map("delay_1h_minutes")
+  delay2hMinutes        Int      @default(120) @map("delay_2h_minutes")
+  autoApproveExecPins   Boolean  @default(false) @map("auto_approve_exec_pins")
+  beatNotStartedAt      String   @default("10:30") @map("beat_not_started_at")
+  beatNotEndedAt        String   @default("20:00") @map("beat_not_ended_at")
+  beatAutoCloseAt       String   @default("23:00") @map("beat_auto_close_at")
+  offlineMaxAgeHours    Int      @default(24) @map("offline_max_age_hours")
+  payableUnitByStatus   Json     @default("{\"PRESENT\":1,\"HOLIDAY\":1,\"WEEKLY_OFF\":1,\"LEAVE\":0,\"ABSENT\":0}") @map("payable_unit_by_status")
+  notificationsEnabled  Json     @default("{}") @map("notifications_enabled")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("company_settings")
+}
+
+// ---------------------------------------------------------------------------
+// Role (T010)
+// ---------------------------------------------------------------------------
+
+model Role {
+  id          String   @id @default(uuid())
+  key         RoleKey
+  companyId   String?  @map("company_id")
+  label       String
+  permissions String[]
+  isSystem    Boolean  @default(true) @map("is_system")
+
+  company Company? @relation(fields: [companyId], references: [id])
+  users   User[]
+
+  @@unique([companyId, key])
+  @@map("roles")
+}
+
+// ---------------------------------------------------------------------------
+// User & related (T011, T012)
+// ---------------------------------------------------------------------------
+
+model User {
+  id String @id @default(uuid())
+
+  // null only for SYSTEM_ADMIN (FR-004)
+  companyId String? @map("company_id")
+  roleId    String  @map("role_id")
+
+  name         String
+  // Read-only to the user themself after creation (FR-021) — not enforceable in Prisma.
+  email        String?
+  // Unique within companyId, case-insensitive (FR-006). Nullable because
+  // required-only-when-role != EMPLOYEE is enforced in service code, not the DB (FR-017).
+  username     String?
+  passwordHash String?    @map("password_hash")
+  mobile       String?
+  photoId      String?    @unique @map("photo_id")
+  status       UserStatus @default(ACTIVE)
+
+  monthlySalary Decimal?  @map("monthly_salary") @db.Decimal(12, 2)
+  tokenVersion  Int       @default(0) @map("token_version")
+  lastLoginAt   DateTime? @map("last_login_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  company       Company?         @relation(fields: [companyId], references: [id])
+  role          Role             @relation(fields: [roleId], references: [id])
+  photo         FileObject?      @relation(fields: [photoId], references: [id])
+  salaryRates   UserSalaryRate[]
+  refreshTokens RefreshToken[]
+  otpChallenges OtpChallenge[]
+
+  @@unique([companyId, username])
+  @@index([companyId, status])
+  @@map("users")
+}
+
+model UserSalaryRate {
+  id        String @id @default(uuid())
+  companyId String @map("company_id")
+  userId    String @map("user_id")
+
+  halfDayRate   Decimal   @map("half_day_rate") @db.Decimal(12, 2)
+  effectiveFrom DateTime  @map("effective_from") @db.Date
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+
+  createdByUserId String   @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([companyId, userId, effectiveFrom])
+  @@map("user_salary_rates")
+}
+
+// ---------------------------------------------------------------------------
+// Auth support (T013, T014)
+// ---------------------------------------------------------------------------
+
+model RefreshToken {
+  id        String  @id @default(uuid())
+  userId    String  @map("user_id")
+  familyId  String  @map("family_id")
+  tokenHash String  @unique @map("token_hash")
+  deviceId  String? @map("device_id")
+  userAgent String? @map("user_agent")
+
+  usedAt    DateTime? @map("used_at")
+  revokedAt DateTime? @map("revoked_at")
+  expiresAt DateTime  @map("expires_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, familyId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model OtpChallenge {
+  id       String @id @default(uuid())
+  userId   String @map("user_id")
+  codeHash String @map("code_hash")
+  purpose  String @default("PASSWORD_RESET")
+  attempts Int    @default(0)
+
+  consumedAt DateTime? @map("consumed_at")
+  expiresAt  DateTime  @map("expires_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@map("otp_challenges")
+}
+
+// ---------------------------------------------------------------------------
+// Files (avatar-only subset) (T015)
+// ---------------------------------------------------------------------------
+
+model FileObject {
+  id        String    @id @default(uuid())
+  companyId String?   @map("company_id")
+  kind      PhotoKind
+
+  storageKey String  @unique @map("storage_key")
+  mimeType   String  @map("mime_type")
+  byteSize   Int     @map("byte_size")
+  width      Int?
+  height     Int?
+  sha256     String
+  thumbKey   String? @map("thumb_key")
+
+  uploadedBy String   @map("uploaded_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User?
+
+  @@index([companyId, kind])
+  @@map("file_objects")
+}
+
+// ---------------------------------------------------------------------------
+// Idempotency & audit (T016, T017)
+// ---------------------------------------------------------------------------
+
+model IdempotencyKey {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  companyId   String?  @map("company_id")
+  userId      String?  @map("user_id")
+  endpoint    String
+  requestHash String   @map("request_hash")
+  statusCode  Int?     @map("status_code")
+  response    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("idempotency_keys")
+}
+
+model AuditEvent {
+  id          String   @id @default(uuid())
+  companyId   String?  @map("company_id")
+  actorUserId String   @map("actor_user_id")
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id")
+  before      Json?
+  after       Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("audit_events")
+}
