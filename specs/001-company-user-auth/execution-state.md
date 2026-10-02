@@ -5,8 +5,8 @@
 
 ## Current Position
 
-- Active work unit: WU-06
-- Current phase: not yet started
+- Active work unit: User Story 2 (sign in, home screen)
+- Current phase: IMPLEMENT (coding subagent in progress)
 - Branch: `001-company-user-auth` (pushed; PR #75 open against `main`)
 - Retry count: 0
 
@@ -19,6 +19,10 @@
 | WU-03 | T019-T021 | #19-#21 | **COMPLETE** | COMMITTED (997f337, branch `001-company-user-auth`, PR #75) | 2 (both legitimate FAILs, both fixed) |
 | WU-04 | T022-T030 | #22-#30 | **COMPLETE** | COMMITTED (50ab5f7, PR #75) | 0 (passed first adversarial review) |
 | WU-05 | T031-T036 | #31-#36 | **COMPLETE** | COMMITTED (2fb08c5, PR #75) | 0 (passed first adversarial review) |
+| US1 | T042-T045 | *(none — added after the initial 74-issue GitHub sync)* | **COMPLETE** | COMMITTED (91e3706, PR #75) | 1 (idempotency-key enforcement gap, fixed) |
+| US2 | T046-T052 + T041 (pulled forward) | #41 closes with US2; #37-#40 remain open | IN-PROGRESS | IMPLEMENT | 0 |
+| WU-06 | T037-T039 | #37-#39 | DEFERRED (avatar pipeline — not needed by any story built so far) | — | — |
+| WU-07 (remainder) | T040 | #40 | DEFERRED (pino structured logging — backend-only, unrelated to any story built so far) | — | — |
 | WU-04 | T022-T030 | #22-#30 | PENDING | — | 0 |
 | WU-05 | T031-T036 | #31-#36 | PENDING | — | 0 |
 | WU-06 | T037-T039 | #37-#39 | PENDING | — | 0 |
