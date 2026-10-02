@@ -4,10 +4,12 @@ import {
   Injectable,
   NestInterceptor,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { PrismaClient } from '@prisma/client';
 import { ClsService } from 'nestjs-cls';
 import { firstValueFrom, from, Observable } from 'rxjs';
 
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import {
   tenantExtension,
   TenantClsStore,
@@ -75,23 +77,39 @@ function withTenantIsolation(cls: ClsService<TransactionClsStore>) {
  * `from(...)` to satisfy `NestInterceptor`'s contract — same pattern,
  * actually awaited.
  *
- * Not yet globally registered as an `APP_INTERCEPTOR` — this work unit's
- * file scope limits `app.module.ts` changes to CLS registration only; wire
- * this into the global pipeline in the work unit that owns that
- * registration.
+ * Registered as a global `APP_INTERCEPTOR` in `app.module.ts` by WU-04,
+ * together with the `@Public()` skip check below — WU-04's DoD item 11
+ * requires registering the two together, never one without the other:
+ * without the skip, forcing every public route (`/auth/login`,
+ * `/auth/refresh`, ...) through a tenant-scoped transaction before any
+ * tenant identity exists would break them outright.
  */
 @Injectable()
 export class TransactionInterceptor implements NestInterceptor {
   private readonly tenantPrisma: ReturnType<typeof withTenantIsolation>;
 
-  constructor(private readonly cls: ClsService<TransactionClsStore>) {
+  constructor(
+    private readonly cls: ClsService<TransactionClsStore>,
+    private readonly reflector: Reflector,
+  ) {
     this.tenantPrisma = withTenantIsolation(this.cls);
   }
 
-  intercept(
-    _context: ExecutionContext,
-    next: CallHandler,
-  ): Observable<unknown> {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    // WU-04 DoD item 11: a `@Public()` handler/class has no tenant identity
+    // yet (it runs before any login has happened, e.g. `/auth/login`
+    // itself) — opening a transaction and calling `set_config('app.
+    // company_id', ...)` for it would be meaningless at best and, once a
+    // public handler needs its own non-tenant-scoped queries, actively
+    // wrong. Skip straight to the rest of the pipeline with no transaction.
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublic) {
+      return next.handle();
+    }
+
     // Falsy (missing) companyId resolves to '' here rather than skipping
     // set_config entirely: an empty/unset `app.company_id` makes the RLS
     // policy (NULLIF-guarded, see the RLS migration) match no rows at all
