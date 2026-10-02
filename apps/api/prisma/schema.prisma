@@ -1,0 +1,12 @@
+// Prisma schema for the Field Sales & Beat Execution API.
+// Models are added starting in work unit WU-02 (specs/001-company-user-auth) —
+// this file currently only declares the datasource and client generator.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
