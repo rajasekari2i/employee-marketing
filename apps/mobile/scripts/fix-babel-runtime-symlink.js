@@ -40,7 +40,7 @@ function main() {
   const realDir = fs.realpathSync(target);
   fs.rmSync(target, { force: true });
   fs.cpSync(realDir, target, { recursive: true });
-  // eslint-disable-next-line no-console
+
   console.log(
     `[fix-babel-runtime-symlink] Replaced symlinked @babel/runtime with a real copy (Metro resolution workaround) from ${realDir}`,
   );

@@ -1,48 +1,24 @@
 import './global.css';
 
-import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { StatusBar, Text, View } from 'react-native';
+import { StatusBar } from 'react-native';
 
-import { COMPANY_CODE, COMPANY_NAME } from './src/config';
+import { RootNavigator } from './src/navigation/RootNavigator';
 
 /**
- * Placeholder root screen. The real role-based navigator
- * (apps/mobile/src/navigation/RootNavigator.tsx) is built by a later work
- * unit (WU-07) once a session/auth store exists — this stub only proves
- * React Navigation + NativeWind + the per-company build config are wired up
- * and the app boots. The company line below is left visible (rather than
- * just logged) as a quick way to confirm which flavor an installed APK is.
+ * User Story 2 (specs/001-company-user-auth/orchestration-plan.md), DoD
+ * item 0. Replaces WU-01's hardcoded `PlaceholderScreen`/`Stack.Navigator`
+ * — `RootNavigator` now owns its own `NavigationContainer` and all
+ * role-based routing (see its own class doc). `App.tsx` is left as just the
+ * top-level providers a later story might add to (e.g. a TanStack Query
+ * `QueryClientProvider`, if/when that gets introduced — see
+ * `src/api/client.ts`'s "why not TanStack Query yet" note) plus the global
+ * NativeWind stylesheet import and the status bar.
  */
-function PlaceholderScreen() {
-  return (
-    <View className="flex-1 items-center justify-center bg-white">
-      <Text className="text-lg font-semibold text-brand-700">
-        Field Sales & Beat Execution
-      </Text>
-      <Text className="mt-2 text-sm text-gray-500">
-        Mobile app scaffold ready.
-      </Text>
-      <Text className="mt-4 text-xs text-gray-400">
-        {COMPANY_NAME} ({COMPANY_CODE})
-      </Text>
-    </View>
-  );
-}
-
-const Stack = createNativeStackNavigator();
-
 export default function App() {
   return (
-    <NavigationContainer>
+    <>
       <StatusBar barStyle="dark-content" />
-      <Stack.Navigator>
-        <Stack.Screen
-          name="Placeholder"
-          component={PlaceholderScreen}
-          options={{ title: 'Field Sales' }}
-        />
-      </Stack.Navigator>
-    </NavigationContainer>
+      <RootNavigator />
+    </>
   );
 }
