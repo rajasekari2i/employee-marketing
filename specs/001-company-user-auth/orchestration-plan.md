@@ -199,6 +199,34 @@ This section covers `tasks.md`'s Phase 3 (T042–T045) — not part of the origi
 
 ---
 
+## User Story 2: Sign in and reach the right home screen (added after User Story 1)
+
+Covers `tasks.md`'s Phase 4 (T046–T052). This is the first **mobile screen** work since WU-01's placeholder scaffold, and the first thing in this whole feature a human actually taps through rather than calls via curl.
+
+### A scheduling gap found before implementation: US2 depends on WU-07's mobile skeleton, not yet built
+
+`tasks.md` T049/T050 explicitly depend on **T041** — `apps/mobile/src/lib/secureSession.ts` and `apps/mobile/src/navigation/RootNavigator.tsx` — which is WU-07's own second DoD item, not yet built (this plan went WU-05 → User Story 1 → User Story 2, skipping WU-06's avatar pipeline and all of WU-07, since neither blocked company creation). WU-06 (avatar upload) genuinely has nothing to do with signing in or the Home screen and stays deferred. WU-07's *other* item (T040, pino structured logging) is also backend-only and unrelated to this story. But WU-07's **mobile skeleton** — a real session store and a real root navigator — is a hard prerequisite for Sign In to do anything useful, so this user story pulls that one piece forward as its own first task rather than waiting for a separate WU-07 pass that would just rebuild the same two files a user story later. `apps/mobile/src/api/client.ts` (T041's third file) is pulled forward too, for the same reason — the Sign In screen needs *something* to POST `/auth/login` through.
+
+**DoD** (per `contracts/auth.md`, `contracts/me.md`, `tasks.md` T046–T052, plus the pulled-forward T041 pieces):
+0. **(Pulled forward from WU-07/T041)** `apps/mobile/src/lib/secureSession.ts` (`react-native-keychain`-backed getters/setters for the access/refresh pair — Architecture §20, updated for bare RN per the Expo-removal decision), `apps/mobile/src/navigation/RootNavigator.tsx` (role-based navigator reading `useSession().role`, replacing `App.tsx`'s current hardcoded `PlaceholderScreen` stack), `apps/mobile/src/api/client.ts` (typed fetch client reading request/response shapes from `packages/shared`, with a response interceptor that retries once through `/auth/refresh` on a `401`, clearing the session and forcing Sign In on `TOKEN_REUSED` — research.md #6).
+1. `GET /me` (`apps/api/src/modules/me/`): returns `{ id, name, email, username, role, companyId, status, photoUrl, permissions, company }` per `contracts/me.md`; `company` populated (name, timezone) only when `companyId` is not null. `photoUrl` is `null` in this slice (no avatar pipeline yet, WU-06) — the field exists in the contract now so later work doesn't have to touch this response shape again.
+2. App logo (screen 0) + `apps/mobile/src/components/AppLogo.tsx` (FR-026).
+3. Sign In screen (1.1): username + password via `react-hook-form` + the login Zod schema already in `packages/shared/src/auth.schema.ts` (WU-05 built this for the backend; the mobile form reuses the same schema — one definition, Constitution rule 5); maps each error code from `contracts/auth.md`'s error table to its exact copy (`INVALID_CREDENTIALS`, `ACCOUNT_INACTIVE`, a network failure, `RATE_LIMITED`, and a generic fallback).
+4. Login success path: store the token pair via the session store (DoD item 0), wire the refresh-retry interceptor (also DoD item 0) into the API client.
+5. Role-based routing in `RootNavigator.tsx`: `COMPANY_ADMIN` → the admin stack (this story's Home screen); `MANAGER`/`MARKETING_EXECUTIVE` → a placeholder "your screens are coming in a later update" screen (their own stacks are explicitly out of scope — spec.md's Assumptions).
+6. Company Admin Home screen (4.1): fetches `GET /me`, shows the signed-in user's `name`, renders an avatar (top-right) opening a dropdown with **Profile** and **Log out** (FR-024). "Profile" can navigate to an empty/placeholder screen for now — the real Profile screen is User Story 4, not this one.
+7. Log out: calls `POST /auth/logout` with the stored refresh token, clears the session store, navigates back to Sign In (FR-023).
+
+**File scope**: `apps/mobile/src/lib/secureSession.ts`, `apps/mobile/src/navigation/RootNavigator.tsx`, `apps/mobile/src/api/client.ts` (all three pulled forward from WU-07/T041 — see above), `apps/api/src/modules/me/{me.controller,me.service,me.module}.ts` (new), `apps/api/src/app.module.ts` (register `MeModule` only), `apps/mobile/assets/logo.png` + `apps/mobile/src/components/AppLogo.tsx` (new), `apps/mobile/src/features/auth/SignInScreen.tsx` (new), `apps/mobile/src/features/admin/HomeScreen.tsx` (new), `apps/mobile/App.tsx` (replacing the hardcoded placeholder stack with `<RootNavigator>` — this file's content changes, but no new package-level config).
+
+**Dependencies**: WU-01 (mobile scaffold), WU-04 (`JwtAuthGuard`/`ActiveAccountGuard` already protect `/me` with zero new code), WU-05 (`/auth/login`/`/auth/refresh`/`/auth/logout`, `auth.schema.ts`), User Story 1 (a real company + Company Admin to actually sign in as and see a populated Home screen for — `sysadmin` has no `company` object to show, so this story's manual verification should use a tenant admin, not the System Admin).
+
+**Human checkpoint**: No — no new security-sensitive server-side logic (`GET /me` only reads, through guards already reviewed in WU-04) and no schema/migration change. Verified concretely instead: boot the API, confirm `/me` is mapped and a real `Authorization: Bearer <token>` request returns the expected shape for both a tenant Company Admin (non-null `company`) and the System Admin (`company: null`) — then, since this plan's execution environment has no device/emulator reliably available for every session, the mobile half is verified by `tsc`/lint passing, `metro`/`gradlew assembleDevDebug` succeeding, and a manual walkthrough description in the report rather than a guaranteed on-device run; if a connected device is available at implementation time, a real on-device Sign In → Home → Log out pass is strongly preferred and should be attempted first.
+
+**New native mobile dependency note**: `react-native-keychain` (for DoD item 0's session store) has native Android code, unlike `react-hook-form`/`@tanstack/react-query` (pure JS) — the same class of integration work the bare-RN mobile rebuild did for `react-native-config`. After adding it, `cd apps/mobile/android && ./gradlew assembleDevDebug` must be re-run and must still succeed (autolinking picks it up automatically in a bare RN project, but this must be confirmed, not assumed) before this story's mobile half is considered done.
+
+---
+
 ## API Contract (endpoints built in this scope)
 
 Reproduced from `contracts/auth.md` and `contracts/files.md` (already adversarially-designed in the Phase 1 plan — not re-derived here):
