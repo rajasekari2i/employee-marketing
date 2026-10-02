@@ -10,6 +10,7 @@ import { ClsService } from 'nestjs-cls';
 import { firstValueFrom, from, Observable } from 'rxjs';
 
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { IS_SKIP_TENANT_KEY } from '../decorators/skip-tenant.decorator';
 import {
   tenantExtension,
   TenantClsStore,
@@ -108,6 +109,37 @@ export class TransactionInterceptor implements NestInterceptor {
     ]);
     if (isPublic) {
       return next.handle();
+    }
+
+    // User Story 1 (specs/001-company-user-auth/orchestration-plan.md) —
+    // a `@SkipTenant()` handler (today, only `POST/GET/PATCH /companies`)
+    // is authenticated but has no tenant to scope to: only `SYSTEM_ADMIN`
+    // (`companyId: null`) can ever reach it, per `@Roles('SYSTEM_ADMIN')`
+    // on those routes. It still needs a real transaction (it writes
+    // `Company`/`CompanySettings`/`Role`/`User` rows), just never one
+    // scoped by `app.company_id` — so this sets `app.is_system_context`
+    // instead, the same escape `ActiveAccountGuard`/`AuthService` already
+    // use for the System Admin's own `companyId IS NULL` row. Checked
+    // before the ordinary tenant branch below: the two are mutually
+    // exclusive by construction (a route is either tenant-scoped or
+    // system-scoped, never both), and `@SkipTenant()` must win when present
+    // so this branch never falls through to setting `app.company_id` from
+    // an (always-empty, for this route) CLS value instead.
+    const isSkipTenant = this.reflector.getAllAndOverride<boolean>(
+      IS_SKIP_TENANT_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    if (isSkipTenant) {
+      return from(
+        this.tenantPrisma.$transaction(async (tx) => {
+          await tx.$executeRaw`SELECT set_config('app.is_system_context', 'true', true)`;
+
+          return this.cls.runWith(
+            { ...this.cls.get(), tx },
+            (): Promise<unknown> => firstValueFrom(next.handle()),
+          );
+        }),
+      );
     }
 
     // Falsy (missing) companyId resolves to '' here rather than skipping

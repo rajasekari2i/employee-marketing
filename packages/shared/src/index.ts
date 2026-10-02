@@ -19,3 +19,17 @@ export type { ErrorCode, ErrorDetail } from './errors';
 
 export { loginSchema, refreshSchema, logoutSchema } from './auth.schema';
 export type { LoginInput, RefreshInput, LogoutInput } from './auth.schema';
+
+export {
+  passwordPolicySchema,
+  createCompanyAdminSchema,
+  createCompanySchema,
+  listCompaniesQuerySchema,
+  updateCompanySchema,
+} from './companies.schema';
+export type {
+  CreateCompanyAdminInput,
+  CreateCompanyInput,
+  ListCompaniesQuery,
+  UpdateCompanyInput,
+} from './companies.schema';

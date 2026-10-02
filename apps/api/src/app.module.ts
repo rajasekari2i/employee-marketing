@@ -13,6 +13,7 @@ import { IdempotencyInterceptor } from './common/interceptors/idempotency.interc
 import { TransactionInterceptor } from './common/interceptors/transaction.interceptor';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { AuthModule } from './modules/auth/auth.module';
+import { CompaniesModule } from './modules/companies/companies.module';
 
 @Module({
   imports: [
@@ -22,6 +23,9 @@ import { AuthModule } from './modules/auth/auth.module';
     // WU-04's request pipeline, which now has live routes to actually
     // cover.
     AuthModule,
+    // User Story 1 (specs/001-company-user-auth/orchestration-plan.md):
+    // `POST/GET/PATCH /companies` — the first consumer of `@SkipTenant()`.
+    CompaniesModule,
     // Establishes one AsyncLocalStorage-backed context per request so the
     // tenant isolation layer (Architecture §5 / CLAUDE.md Constitution
     // rule 2) — the Prisma extension in src/infra/prisma/tenant.extension.ts

@@ -35,7 +35,7 @@ Creates the company **and** its first Company Admin atomically (research.md #3).
 
 **Errors**: `VALIDATION_FAILED` (400), `COMPANY_CODE_TAKEN` (409 — FR-003), `IDEMPOTENCY_KEY_REUSED` (409, different body replayed under the same key).
 
-**Side effects**: inserts `CompanySettings` with architecture defaults, seeds the five `Role` rows for this company, inserts the admin `User` with an open-ended `UserSalaryRate` row only if a rate was supplied (optional at bootstrap), writes one `AuditEvent`.
+**Side effects**: inserts `CompanySettings` with architecture defaults, seeds the four tenant-scoped `Role` rows for this company (`COMPANY_ADMIN`, `MANAGER`, `MARKETING_EXECUTIVE`, `EMPLOYEE` — the platform-wide `SYSTEM_ADMIN` role is seeded once, separately, not per company), inserts the admin `User` with an open-ended `UserSalaryRate` row only if a rate was supplied (optional at bootstrap), writes one `AuditEvent`.
 
 ## `GET /companies` — System Admin
 
