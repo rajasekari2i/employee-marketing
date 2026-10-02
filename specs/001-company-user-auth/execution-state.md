@@ -5,8 +5,8 @@
 
 ## Current Position
 
-- Active work unit: User Story 2 (sign in, home screen)
-- Current phase: IMPLEMENT (coding subagent in progress)
+- Active work unit: User Story 3 (not yet started) or next as directed
+- Current phase: —
 - Branch: `001-company-user-auth` (pushed; PR #75 open against `main`)
 - Retry count: 0
 
@@ -20,9 +20,11 @@
 | WU-04 | T022-T030 | #22-#30 | **COMPLETE** | COMMITTED (50ab5f7, PR #75) | 0 (passed first adversarial review) |
 | WU-05 | T031-T036 | #31-#36 | **COMPLETE** | COMMITTED (2fb08c5, PR #75) | 0 (passed first adversarial review) |
 | US1 | T042-T045 | *(none — added after the initial 74-issue GitHub sync)* | **COMPLETE** | COMMITTED (91e3706, PR #75) | 1 (idempotency-key enforcement gap, fixed) |
-| US2 | T046-T052 + T041 (pulled forward) | #41 closes with US2; #37-#40 remain open | IN-PROGRESS | IMPLEMENT | 0 |
+| US2 | T046-T052 + T041 (pulled forward) | *(none — added after the initial sync)* | **COMPLETE** | COMMITTED (104fe88, PR #75) | 0 (passed first adversarial review) |
 | WU-06 | T037-T039 | #37-#39 | DEFERRED (avatar pipeline — not needed by any story built so far) | — | — |
 | WU-07 (remainder) | T040 | #40 | DEFERRED (pino structured logging — backend-only, unrelated to any story built so far) | — | — |
+| US3 | T053-T061 | *(none yet — not added to the plan)* | NOT STARTED | — | — |
+| US4 | T062-T070 | *(none yet — not added to the plan)* | NOT STARTED | — | — |
 | WU-04 | T022-T030 | #22-#30 | PENDING | — | 0 |
 | WU-05 | T031-T036 | #31-#36 | PENDING | — | 0 |
 | WU-06 | T037-T039 | #37-#39 | PENDING | — | 0 |
@@ -54,6 +56,15 @@ None currently.
 ## Architecture Pivot (2026-10-02, post-WU-03)
 
 The user explicitly requested removing Expo entirely in favor of the bare React Native CLI, after being told Expo apps are already React Native (not a different framework) and understanding the tradeoffs: losing EAS's per-company build-profile mechanism (replaced by native Android product flavors / iOS schemes, see Architecture D-08 and §16.1 "One build per company"), and that WU-01's Expo-based mobile scaffold (already reviewed and merged to `main`) needs to be replaced. Updated: `docs/product/03-ARCHITECTURE.md` (D-08, §2, §3, §16, §16.1, §20, open-decision T-05), `specs/001-company-user-auth/plan.md`, `tasks.md`, `research.md`, `orchestration-plan.md`. The actual `apps/mobile` rebuild is tracked as its own follow-up work (not a renumbered WU — it replaces WU-01's mobile deliverable specifically).
+
+## Real Test Data in the Dev Database (not to be deleted)
+
+As of US2's commit, the dev Postgres database holds real, intentionally-persistent data created through the normal API (not test fixtures to clean up):
+- **Company**: `SRT` / "Sri Ramana Traders", `ACTIVE`.
+- **Its Company Admin**: username `ramana.admin`, password `Passw0rd1`, email `admin@sriramanatraders.example`.
+- **Platform System Admin**: username `sysadmin`, password from `apps/api/.env`'s `SEED_SYSTEM_ADMIN_PASSWORD` (seeded, not hardcoded).
+
+Future work units/stories that need a real tenant user to test against should use `ramana.admin`/`SRT` rather than creating yet another throwaway company — and must NOT delete or modify this data. Any *additional* test company a coding/review agent creates for its own verification must be fully cleaned up (refresh_tokens → users → roles → company_settings → companies, in that FK order) before finishing, confirmed by checking the DB is back to exactly this baseline.
 
 ## Established Patterns
 
