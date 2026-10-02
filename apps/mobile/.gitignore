@@ -1,22 +1,15 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
-
 # dependencies
 node_modules/
 
-# Expo
-.expo/
-dist/
-web-build/
-expo-env.d.ts
-
-# Native
-.kotlin/
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
+# Android/Gradle
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.cxx/
+android/.kotlin/
+*.keystore
+!debug.keystore
 
 # Metro
 .metro-health-check*
@@ -36,6 +29,6 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
-# generated native folders
+# No iOS/ios project is generated on this machine (Architecture §16.1) — kept out of the
+# repo on purpose, not an oversight.
 /ios
-/android

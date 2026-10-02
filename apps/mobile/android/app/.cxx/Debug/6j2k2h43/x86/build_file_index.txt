@@ -1,0 +1,4 @@
+/home/rajasekar/myuse/projects/marketing/source/employee-marketing/apps/mobile/node_modules/react-native-config/android/build/generated/source/codegen/jni/CMakeLists.txt
+/home/rajasekar/myuse/projects/marketing/source/employee-marketing/apps/mobile/node_modules/react-native-safe-area-context/android/src/main/jni/CMakeLists.txt
+/home/rajasekar/myuse/projects/marketing/source/employee-marketing/apps/mobile/node_modules/react-native-screens/android/src/main/jni/CMakeLists.txt
+/home/rajasekar/myuse/projects/marketing/source/employee-marketing/apps/mobile/node_modules/react-native/ReactAndroid/cmake-utils/default-app-setup/CMakeLists.txt

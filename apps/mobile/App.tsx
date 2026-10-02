@@ -2,14 +2,17 @@ import './global.css';
 
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { StatusBar } from 'expo-status-bar';
-import { Text, View } from 'react-native';
+import { StatusBar, Text, View } from 'react-native';
+
+import { COMPANY_CODE, COMPANY_NAME } from './src/config';
 
 /**
  * Placeholder root screen. The real role-based navigator
  * (apps/mobile/src/navigation/RootNavigator.tsx) is built by a later work
  * unit (WU-07) once a session/auth store exists — this stub only proves
- * React Navigation + NativeWind are wired up and the app boots.
+ * React Navigation + NativeWind + the per-company build config are wired up
+ * and the app boots. The company line below is left visible (rather than
+ * just logged) as a quick way to confirm which flavor an installed APK is.
  */
 function PlaceholderScreen() {
   return (
@@ -20,6 +23,9 @@ function PlaceholderScreen() {
       <Text className="mt-2 text-sm text-gray-500">
         Mobile app scaffold ready.
       </Text>
+      <Text className="mt-4 text-xs text-gray-400">
+        {COMPANY_NAME} ({COMPANY_CODE})
+      </Text>
     </View>
   );
 }
@@ -29,6 +35,7 @@ const Stack = createNativeStackNavigator();
 export default function App() {
   return (
     <NavigationContainer>
+      <StatusBar barStyle="dark-content" />
       <Stack.Navigator>
         <Stack.Screen
           name="Placeholder"
@@ -36,7 +43,6 @@ export default function App() {
           options={{ title: 'Field Sales' }}
         />
       </Stack.Navigator>
-      <StatusBar style="auto" />
     </NavigationContainer>
   );
 }
