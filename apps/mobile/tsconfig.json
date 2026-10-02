@@ -2,14 +2,20 @@
   "extends": "@field-sales/config/tsconfig.base.json",
   "compilerOptions": {
     "jsx": "react-native",
-    "customConditions": ["react-native"],
+    "customConditions": [
+      "react-native"
+    ],
     "allowSyntheticDefaultImports": true,
     // react-native's own package.json exports map mixes case in a way that trips
     // forceConsistentCasingInFileNames on some platforms; @react-native/typescript-config
     // disables it for the same reason.
     "forceConsistentCasingInFileNames": false
   },
-  "include": ["**/*.ts", "**/*.tsx"],
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "nativewind-env.d.ts"
+  ],
   "exclude": [
     "node_modules",
     "android",
