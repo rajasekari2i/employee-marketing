@@ -12,9 +12,16 @@ import { ProblemDetailsFilter } from './common/filters/problem-details.filter';
 import { IdempotencyInterceptor } from './common/interceptors/idempotency.interceptor';
 import { TransactionInterceptor } from './common/interceptors/transaction.interceptor';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
+import { AuthModule } from './modules/auth/auth.module';
 
 @Module({
   imports: [
+    // WU-05 DoD item 7: the first feature module with real controllers
+    // (`POST /auth/login`, `/auth/refresh`, `/auth/logout`) — everything
+    // above this point in the file (guards/pipes/filters/interceptors) is
+    // WU-04's request pipeline, which now has live routes to actually
+    // cover.
+    AuthModule,
     // Establishes one AsyncLocalStorage-backed context per request so the
     // tenant isolation layer (Architecture §5 / CLAUDE.md Constitution
     // rule 2) — the Prisma extension in src/infra/prisma/tenant.extension.ts
