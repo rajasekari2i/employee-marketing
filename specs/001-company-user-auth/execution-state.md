@@ -5,17 +5,18 @@
 
 ## Current Position
 
-- Active work unit: WU-03
+- Active work unit: WU-04
 - Current phase: not yet started
+- Branch: `001-company-user-auth` (pushed; PR #75 open against `main`)
 - Retry count: 0
 
 ## Work Unit Status
 
 | WU | Tasks | GitHub Issues | Status | Phase | Retries |
 |----|-------|---------------|--------|-------|---------|
-| WU-01 | T001-T006 | #1-#6 | **COMPLETE** | COMMITTED (5b0faad) | 0 |
-| WU-02 | T007-T018 | #7-#18 | **COMPLETE** | COMMITTED (b5a5f98) | 0 |
-| WU-03 | T019-T021 | #19-#21 | IN-PROGRESS | — | 0 |
+| WU-01 | T001-T006 | #1-#6 | **COMPLETE** | COMMITTED (5b0faad, on `main`) | 0 |
+| WU-02 | T007-T018 | #7-#18 | **COMPLETE** | COMMITTED (b5a5f98, on `main`) | 0 |
+| WU-03 | T019-T021 | #19-#21 | **COMPLETE** | COMMITTED (997f337, branch `001-company-user-auth`, PR #75) | 2 (both legitimate FAILs, both fixed) |
 | WU-04 | T022-T030 | #22-#30 | PENDING | — | 0 |
 | WU-05 | T031-T036 | #31-#36 | PENDING | — | 0 |
 | WU-06 | T037-T039 | #37-#39 | PENDING | — | 0 |
@@ -40,6 +41,7 @@ None currently.
 |----|-------|-----------|-------|
 | WU-01 | Monorepo & tooling scaffold | `apps/api/**`, `apps/mobile/**`, `packages/config/**`, `packages/shared/**`, root `package.json`/`pnpm-workspace.yaml`/`turbo.json` | Fixed two real gaps found during VALIDATE: `packages/shared`/`apps/mobile` had no local `eslint` (fell through to a stray global v6.4.0); `apps/api`'s lint config never actually used the "shared" config. Resolved with a genuinely shared flat-config base + root Prettier config. |
 | WU-02 | Prisma schema & initial migration | `apps/api/prisma/schema.prisma` (10 models + 4 enums), `apps/api/prisma/migrations/20261002105434_init_company_user_auth/` | Caught and fixed a real gap: the orchestrator's own task instructions had dropped two `@default(...)` values Architecture §7 specifies (`CompanySettings.payableUnitByStatus`/`notificationsEnabled`). Required a `prisma migrate reset --force` on the local dev DB to regenerate one clean migration — Prisma itself blocked this pending explicit user consent (`PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION`), which was obtained before proceeding. Local DB setup: Postgres 16 on :5432, `postgres`/`postgres`, database `field_sales` created fresh. `users.roleId` is a mandatory (non-nullable) FK with `ON DELETE RESTRICT`. |
+| WU-03 | Tenant isolation layer | `apps/api/src/infra/prisma/tenant.extension.ts`, `apps/api/src/common/interceptors/transaction.interceptor.ts`, `apps/api/prisma/migrations/20261002110942_rls_user_fileobject/`, `apps/api/src/app.module.ts` (CLS), `apps/api/package.json`/`.env`/`.env.example` (app_user role split) | Took 3 adversarial review rounds — 2 legitimate FAILs, both fixed: (1) System Admin's `companyId IS NULL` row was permanently unreachable under the initial RLS policy (SQL `NULL = anything` is never true) — added the `app.is_system_context` escape; (2) that escape was only applied to `users`, not `file_objects`, despite both needing it identically — fixed to match. Also discovered mid-review that `package.json`/`.env`/`.env.example` were never added to WU-03's written file scope even though the IMPLEMENT instructions always required them — amended the plan document itself (same pattern as the WU-04 `@Public()` amendment) rather than treating it as a one-off exception. `TransactionInterceptor` is built but deliberately NOT globally registered — that's WU-04's job (see below). |
 
 ## Established Patterns
 
