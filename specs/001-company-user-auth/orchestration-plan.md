@@ -35,7 +35,7 @@ In every case, the excess is file *count* within one cohesive module, not scope 
 **DoD**:
 1. pnpm workspace root exists (`package.json`, `pnpm-workspace.yaml` listing `apps/*` and `packages/*`, `turbo.json`) and `packages/config/` holds a shared `tsconfig.base.json`, `.eslintrc.cjs` and Tailwind preset (T001)
 2. `apps/api` is a NestJS 11 project (Node 22 LTS, TypeScript strict) that boots via `pnpm --filter api dev` to an empty `/healthz`-less root (T002)
-3. `apps/mobile` is an Expo project whose `app.config.ts` reads `COMPANY_CODE`, `COMPANY_NAME`, `API_URL` **and the Google Maps key** from the EAS profile (Architecture §16.1), with NativeWind + the shared Tailwind preset and React Navigation installed, booting via `pnpm --filter mobile start` (T003)
+3. `apps/mobile` is a bare React Native CLI project (own `android`/`ios` native projects, no Expo SDK/EAS — Architecture D-08, updated 2026-10-02) that reads `COMPANY_CODE`, `COMPANY_NAME`, `API_URL` **and the Google Maps key** per company via native build variants (an Android product flavor per company in `android/app/build.gradle`, surfaced to JS via a native-config bridge; Architecture §16.1), with NativeWind + the shared Tailwind preset and React Navigation installed, booting via `pnpm --filter mobile start` + `pnpm --filter mobile android` (T003)
 4. `packages/shared` builds with `tsup` from a placeholder `src/index.ts` (T004)
 5. `packages/shared/src/env.ts` Zod-validates `DATABASE_URL, JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, JWT_ACCESS_TTL(default 15m), JWT_REFRESH_TTL(default 60d), FILE_URL_SECRET, RAILWAY_VOLUME_MOUNT_PATH, SEED_SYSTEM_ADMIN_USERNAME, SEED_SYSTEM_ADMIN_PASSWORD, LOG_LEVEL`; `apps/api/src/main.ts` calls it at boot and the process exits non-zero if a required value is missing/malformed (T005)
 6. `apps/api/prisma/schema.prisma` has `datasource db { provider = "postgresql" }` and `generator client { provider = "prisma-client-js" }` (T006)
@@ -163,7 +163,7 @@ In every case, the excess is file *count* within one cohesive module, not scope 
 
 **DoD**:
 1. `pino` JSON logging in `apps/api/src/main.ts` with `requestId, companyId, userId, route, durationMs` fields and a redaction list covering `password, token, authorization, latitude, longitude, reasonText, otp` (T040)
-2. `apps/mobile/src/navigation/RootNavigator.tsx` (role-based navigator stub reading `useSession().role`), `apps/mobile/src/lib/secureSession.ts` (`expo-secure-store`-backed getters/setters for the access/refresh pair), `apps/mobile/src/api/client.ts` (typed fetch client scaffold reading shapes from `packages/shared`) (T041)
+2. `apps/mobile/src/navigation/RootNavigator.tsx` (role-based navigator stub reading `useSession().role`), `apps/mobile/src/lib/secureSession.ts` (`react-native-keychain`-backed getters/setters for the access/refresh pair), `apps/mobile/src/api/client.ts` (typed fetch client scaffold reading shapes from `packages/shared`) (T041)
 
 **File scope**: `apps/api/src/main.ts` (pino section), `apps/mobile/src/navigation/RootNavigator.tsx`, `apps/mobile/src/lib/secureSession.ts`, `apps/mobile/src/api/client.ts`
 

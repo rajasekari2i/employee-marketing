@@ -10,15 +10,15 @@ Stand up the monorepo's first vertical slice: a System Admin can provision a com
 
 ## Technical Context
 
-**Language/Version**: TypeScript throughout (strict mode); Node.js 22 LTS for the API, Expo SDK's current React Native runtime for mobile (per Architecture D-02, D-08).
+**Language/Version**: TypeScript throughout (strict mode); Node.js 22 LTS for the API, the current stable React Native runtime for mobile, built via the bare React Native CLI — no Expo SDK/EAS (per Architecture D-02, D-08, decision updated 2026-10-02).
 
-**Primary Dependencies**: NestJS 11 + `nestjs-zod` + `@nestjs/jwt` + `argon2` + `@nestjs/throttler` + `@nestjs/schedule` (cleanup job) on the API; Prisma 6 as the ORM; Zod schemas in `packages/shared` shared by both sides; Expo (prebuild/EAS) + NativeWind (Tailwind) + React Navigation + TanStack Query + Zustand + MMKV + `react-hook-form` on mobile (D-03, D-08, D-09, D-10).
+**Primary Dependencies**: NestJS 11 + `nestjs-zod` + `@nestjs/jwt` + `argon2` + `@nestjs/throttler` + `@nestjs/schedule` (cleanup job) on the API; Prisma 6 as the ORM; Zod schemas in `packages/shared` shared by both sides; bare React Native CLI (own `android/`/`ios/` native projects) + NativeWind (Tailwind) + React Navigation + TanStack Query + Zustand + MMKV + `react-hook-form` on mobile (D-03, D-08, D-09, D-10).
 
 **Storage**: PostgreSQL 16 on Railway via Prisma migrations (D-04); user avatar photos through the `StorageAdapter` → Railway volume path described in Architecture §12 (only the `USER_AVATAR` `PhotoKind`, not shop photos — those stay out of scope here).
 
 **Testing**: None for this feature. CLAUDE.md's standing testing policy explicitly suspends unit and integration test authoring project-wide "for now," overriding Architecture §19's Vitest/Jest strategy; this plan is verified instead through the manual/scripted walkthrough in `quickstart.md`. If a future task explicitly asks for tests, that request overrides the policy for that task only.
 
-**Target Platform**: API as a single-replica Node service on Railway (Linux); mobile as an Android-first, iOS-ready Expo app, one build per company (D-08, §16.1).
+**Target Platform**: API as a single-replica Node service on Railway (Linux); mobile as an Android-first, iOS-ready bare React Native app, one build per company via native build variants (D-08, §16.1).
 
 **Project Type**: Mobile + API monorepo (existing architecture layout — `apps/api`, `apps/mobile`, `packages/shared`; this feature creates that layout, since no source code exists yet per CLAUDE.md).
 
@@ -94,8 +94,9 @@ field-sales/                                  # repo root (pnpm workspaces + Tur
 │  │  │     ├─ files/                         # avatar upload + signed URL serving
 │  │  │     └─ audit/                         # AuditEvent writer used by users + auth
 │  │  └─ test/                                # present but empty per the no-tests-for-now policy
-│  └─ mobile/                                 # Expo React Native
-│     ├─ app.config.ts                        # per-company build config (COMPANY_CODE, API_URL)
+│  └─ mobile/                                 # Bare React Native CLI
+│     ├─ android/                             # native project; one product flavor per company
+│     ├─ ios/                                 # native project; one scheme/.xcconfig per company (when built)
 │     ├─ src/
 │     │  ├─ api/                              # typed client + query hooks generated from
 │     │  │                                    # packages/shared
