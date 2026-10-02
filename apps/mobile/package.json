@@ -8,7 +8,8 @@
   "main": "index.ts",
   "scripts": {
     "start": "react-native start",
-    "android": "react-native run-android --mode devDebug",
+    "android": "react-native run-android --mode devDebug --appIdSuffix dev",
+    "android:srt": "react-native run-android --mode srtDebug --appIdSuffix srt",
     "lint": "eslint ."
   },
   "dependencies": {
