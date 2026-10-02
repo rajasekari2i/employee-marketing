@@ -1,4 +1,0 @@
-/home/rajasekar/myuse/projects/marketing/source/employee-marketing/apps/mobile/android/app/.cxx/Debug/6j2k2h43/x86_64/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/foo.dir
-/home/rajasekar/myuse/projects/marketing/source/employee-marketing/apps/mobile/android/app/.cxx/Debug/6j2k2h43/x86_64/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/boo.dir
-/home/rajasekar/myuse/projects/marketing/source/employee-marketing/apps/mobile/android/app/.cxx/Debug/6j2k2h43/x86_64/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/edit_cache.dir
-/home/rajasekar/myuse/projects/marketing/source/employee-marketing/apps/mobile/android/app/.cxx/Debug/6j2k2h43/x86_64/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/rebuild_cache.dir
