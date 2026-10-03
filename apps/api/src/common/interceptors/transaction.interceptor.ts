@@ -4,10 +4,13 @@ import {
   Injectable,
   NestInterceptor,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { PrismaClient } from '@prisma/client';
 import { ClsService } from 'nestjs-cls';
 import { firstValueFrom, from, Observable } from 'rxjs';
 
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { IS_SKIP_TENANT_KEY } from '../decorators/skip-tenant.decorator';
 import {
   tenantExtension,
   TenantClsStore,
@@ -75,23 +78,70 @@ function withTenantIsolation(cls: ClsService<TransactionClsStore>) {
  * `from(...)` to satisfy `NestInterceptor`'s contract — same pattern,
  * actually awaited.
  *
- * Not yet globally registered as an `APP_INTERCEPTOR` — this work unit's
- * file scope limits `app.module.ts` changes to CLS registration only; wire
- * this into the global pipeline in the work unit that owns that
- * registration.
+ * Registered as a global `APP_INTERCEPTOR` in `app.module.ts` by WU-04,
+ * together with the `@Public()` skip check below — WU-04's DoD item 11
+ * requires registering the two together, never one without the other:
+ * without the skip, forcing every public route (`/auth/login`,
+ * `/auth/refresh`, ...) through a tenant-scoped transaction before any
+ * tenant identity exists would break them outright.
  */
 @Injectable()
 export class TransactionInterceptor implements NestInterceptor {
   private readonly tenantPrisma: ReturnType<typeof withTenantIsolation>;
 
-  constructor(private readonly cls: ClsService<TransactionClsStore>) {
+  constructor(
+    private readonly cls: ClsService<TransactionClsStore>,
+    private readonly reflector: Reflector,
+  ) {
     this.tenantPrisma = withTenantIsolation(this.cls);
   }
 
-  intercept(
-    _context: ExecutionContext,
-    next: CallHandler,
-  ): Observable<unknown> {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    // WU-04 DoD item 11: a `@Public()` handler/class has no tenant identity
+    // yet (it runs before any login has happened, e.g. `/auth/login`
+    // itself) — opening a transaction and calling `set_config('app.
+    // company_id', ...)` for it would be meaningless at best and, once a
+    // public handler needs its own non-tenant-scoped queries, actively
+    // wrong. Skip straight to the rest of the pipeline with no transaction.
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublic) {
+      return next.handle();
+    }
+
+    // User Story 1 (specs/001-company-user-auth/orchestration-plan.md) —
+    // a `@SkipTenant()` handler (today, only `POST/GET/PATCH /companies`)
+    // is authenticated but has no tenant to scope to: only `SYSTEM_ADMIN`
+    // (`companyId: null`) can ever reach it, per `@Roles('SYSTEM_ADMIN')`
+    // on those routes. It still needs a real transaction (it writes
+    // `Company`/`CompanySettings`/`Role`/`User` rows), just never one
+    // scoped by `app.company_id` — so this sets `app.is_system_context`
+    // instead, the same escape `ActiveAccountGuard`/`AuthService` already
+    // use for the System Admin's own `companyId IS NULL` row. Checked
+    // before the ordinary tenant branch below: the two are mutually
+    // exclusive by construction (a route is either tenant-scoped or
+    // system-scoped, never both), and `@SkipTenant()` must win when present
+    // so this branch never falls through to setting `app.company_id` from
+    // an (always-empty, for this route) CLS value instead.
+    const isSkipTenant = this.reflector.getAllAndOverride<boolean>(
+      IS_SKIP_TENANT_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    if (isSkipTenant) {
+      return from(
+        this.tenantPrisma.$transaction(async (tx) => {
+          await tx.$executeRaw`SELECT set_config('app.is_system_context', 'true', true)`;
+
+          return this.cls.runWith(
+            { ...this.cls.get(), tx },
+            (): Promise<unknown> => firstValueFrom(next.handle()),
+          );
+        }),
+      );
+    }
+
     // Falsy (missing) companyId resolves to '' here rather than skipping
     // set_config entirely: an empty/unset `app.company_id` makes the RLS
     // policy (NULLIF-guarded, see the RLS migration) match no rows at all

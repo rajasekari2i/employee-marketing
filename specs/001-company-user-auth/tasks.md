@@ -21,7 +21,7 @@ description: "Task list for Company Provisioning, User Management & Sign-In"
 
 ## Path Conventions
 
-Mobile + API monorepo per `plan.md`'s Project Structure: `apps/api/` (NestJS), `apps/mobile/` (Expo React Native), `packages/shared/` (Zod contracts). No `apps/` or `packages/` directories exist yet — Phase 1 creates them.
+Mobile + API monorepo per `plan.md`'s Project Structure: `apps/api/` (NestJS), `apps/mobile/` (bare React Native CLI — no Expo/EAS, per Architecture D-08), `packages/shared/` (Zod contracts). No `apps/` or `packages/` directories exist yet — Phase 1 creates them.
 
 ---
 
@@ -31,7 +31,7 @@ Mobile + API monorepo per `plan.md`'s Project Structure: `apps/api/` (NestJS), `
 
 - [ ] T001 Create the pnpm workspace root: `package.json`, `pnpm-workspace.yaml` (listing `apps/*` and `packages/*`), `turbo.json`, and `packages/config/` with shared `tsconfig.base.json`, `.eslintrc.cjs` and a Tailwind preset, per Architecture §3's monorepo layout
 - [ ] T002 [P] Initialize `apps/api`: NestJS 11 on Node 22 LTS, TypeScript strict, with `apps/api/package.json`, `apps/api/src/main.ts` and `apps/api/src/app.module.ts` skeletons (Architecture D-02)
-- [ ] T003 [P] Initialize `apps/mobile`: Expo (React Native) project with `apps/mobile/app.config.ts` reading `COMPANY_CODE`, `COMPANY_NAME`, `API_URL` and the Google Maps key from the EAS profile (Architecture §16.1), NativeWind + the shared Tailwind preset wired in, React Navigation installed
+- [ ] T003 [P] Initialize `apps/mobile`: bare React Native CLI project (own `android/`/`ios/` native projects, no Expo SDK/EAS) with `COMPANY_CODE`, `COMPANY_NAME`, `API_URL` and the Google Maps key supplied per company via native build variants — an Android product flavor per company in `android/app/build.gradle`, surfaced to JS via a native-config bridge (Architecture §16.1) — NativeWind + the shared Tailwind preset wired in, React Navigation installed
 - [ ] T004 [P] Initialize `packages/shared` (Zod schemas + inferred types, built with `tsup`), with placeholder `packages/shared/src/index.ts` exporting nothing yet — later tasks add the real schemas
 - [ ] T005 [P] Implement environment validation in `packages/shared/src/env.ts`: a Zod schema for `DATABASE_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_ACCESS_TTL` (default `15m`), `JWT_REFRESH_TTL` (default `60d`), `FILE_URL_SECRET`, `RAILWAY_VOLUME_MOUNT_PATH`, `SEED_SYSTEM_ADMIN_USERNAME`, `SEED_SYSTEM_ADMIN_PASSWORD`, `LOG_LEVEL`; `apps/api/src/main.ts` calls it at boot and the process must refuse to start if a required value is missing or malformed (Architecture §17)
 - [ ] T006 [P] Add Prisma to `apps/api`: run `prisma init`, set `datasource db { provider = "postgresql" }` and `generator client { provider = "prisma-client-js" }` in `apps/api/prisma/schema.prisma`
@@ -80,7 +80,7 @@ Mobile + API monorepo per `plan.md`'s Project Structure: `apps/api/` (NestJS), `
 - [ ] T038 Implement the avatar upload pipeline in `apps/api/src/modules/files/files.service.ts`: accept multipart ≤10 MB, `image/jpeg|png|webp|heic`; verify magic bytes (not just the declared `Content-Type`); use `sharp` to auto-rotate from EXIF, strip all other metadata, resize to a 1600 px long edge, encode WebP quality 80, and write a 320 px thumbnail; compute `sha256` and reuse an existing `FileObject` row within the same company on a match instead of duplicating storage (contracts/files.md)
 - [ ] T039 Implement `GET /files/:id?token=` in `apps/api/src/modules/files/files.controller.ts`: validates a 10-minute HMAC token (`fileId|userId|exp`) using `FILE_URL_SECRET`, serving the full image or, with `?thumb=1`, the 320 px thumbnail; `401/403 FORBIDDEN` on a missing/expired/invalid token, `404 NOT_FOUND` otherwise (contracts/files.md)
 - [ ] T040 [P] Configure `pino` JSON logging in `apps/api/src/main.ts` with `requestId, companyId, userId, route, durationMs` fields and a redaction list covering `password`, `token`, `authorization`, `latitude`, `longitude`, `reasonText`, `otp` (Architecture §18, NFR-10)
-- [ ] T041 [P] Scaffold `apps/mobile/src/navigation/RootNavigator.tsx` (role-based navigator stub reading `useSession().role`) and `apps/mobile/src/lib/secureSession.ts` (an `expo-secure-store`-backed session store with getters/setters for the access/refresh pair) and a typed fetch client scaffold in `apps/mobile/src/api/client.ts` that reads request/response shapes from `packages/shared`
+- [ ] T041 [P] Scaffold `apps/mobile/src/navigation/RootNavigator.tsx` (role-based navigator stub reading `useSession().role`) and `apps/mobile/src/lib/secureSession.ts` (a `react-native-keychain`-backed session store with getters/setters for the access/refresh pair) and a typed fetch client scaffold in `apps/mobile/src/api/client.ts` that reads request/response shapes from `packages/shared`
 
 **Checkpoint**: `pnpm --filter api dev` boots, Prisma migrations apply, `POST /auth/login` works end-to-end for the seeded System Admin, and the mobile app boots to an empty root navigator. Every user story below can now proceed.
 

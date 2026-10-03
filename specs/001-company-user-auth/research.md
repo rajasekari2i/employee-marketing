@@ -46,7 +46,7 @@ The Technical Context in `plan.md` carries no `NEEDS CLARIFICATION` markers — 
 
 ## 6. Session storage and rotation on the mobile client
 
-**Decision**: Confirm — no new decision needed. Access and refresh tokens are kept in `expo-secure-store` (already decided, Architecture §20); refresh happens transparently via a TanStack Query/Axios interceptor that retries the original request once after a successful `/auth/refresh`, and on `TOKEN_REUSED` clears the store and forces the sign-in screen.
+**Decision**: Access and refresh tokens are kept in `react-native-keychain` (updated 2026-10-02 — Architecture §20 originally named `expo-secure-store`, superseded when the project moved to the bare React Native CLI; D-08); refresh happens transparently via a TanStack Query/Axios interceptor that retries the original request once after a successful `/auth/refresh`, and on `TOKEN_REUSED` clears the store and forces the sign-in screen.
 
 **Rationale**: Recorded here only so the mobile `features/auth` implementation has one place that states the refresh-retry behaviour explicitly; everything else is already decided elsewhere in Architecture §6/§20.
 

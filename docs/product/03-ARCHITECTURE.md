@@ -21,7 +21,7 @@
 | D-05 | Tenancy | **Shared schema + `companyId` + Prisma extension + Postgres RLS** | One migration path, two independent layers of isolation |
 | D-06 | Auth | **Stateless JWT**: access 15 min, rotating refresh 60 days, argon2id passwords | No session store on the API; refresh rotation gives revocation |
 | D-07 | Login identity | Username + password; **company from the build**, username unique per company | One APK per company, so no company code to type |
-| D-08 | Mobile | **React Native via Expo (prebuild / EAS)**, NativeWind (Tailwind), React Navigation | Expo config plugins + EAS build profiles give one build per company cheaply |
+| D-08 | Mobile | **Bare React Native CLI** (own `android/`/`ios/` native projects, no Expo SDK/EAS), NativeWind (Tailwind), React Navigation | Project decision (2026-10-02, supersedes the original Expo/EAS choice): full control over native code/build config, no Expo managed-workflow dependency. Per-company builds come from **native build variants** instead of EAS profiles — Android product flavors (`android/app/build.gradle`, one flavor per company, each with its own `applicationIdSuffix` and `BuildConfigField`s for `COMPANY_CODE`/`COMPANY_NAME`/`API_URL`/`GOOGLE_MAPS_API_KEY`) and, when iOS is built, one Xcode scheme + `.xcconfig` per company mirroring the same values |
 | D-09 | Mobile data layer | TanStack Query + Zustand + MMKV, SQLite for the offline queue | Cache and retry semantics for a field app on bad networks |
 | D-10 | Shared contract | `packages/shared` with **Zod** schemas and inferred types, used by API DTOs and mobile forms | One definition of every payload |
 | D-11 | Photos | **Railway volume** behind a `StorageAdapter`, signed short-lived URLs | Matches the chosen deployment; swappable to S3/MinIO without touching business code |
@@ -39,7 +39,7 @@
 ┌──────────────────────────────┐        ┌───────────────────────────────┐
 │  Mobile app (React Native)   │        │  Google Maps Platform         │
 │  one build per company       │──────▶ │  Maps SDK, Places, Geocoding  │
-│  Expo · NativeWind · TanStack│        └───────────────────────────────┘
+│  Bare RN · NativeWind · TanStack│      └───────────────────────────────┘
 └──────────────┬───────────────┘
                │ HTTPS  JSON  Bearer JWT
                ▼
@@ -87,8 +87,9 @@ field-sales/
 │  │  │     ├─ reports/  files/  notifications/  audit/
 │  │  │     └─ jobs/
 │  │  └─ test/{unit,integration,e2e}
-│  └─ mobile/                    # Expo React Native
-│     ├─ app.config.ts           # per-company build config
+│  └─ mobile/                    # Bare React Native CLI
+│     ├─ android/                # native project; one product flavor per company
+│     ├─ ios/                    # native project; one scheme/.xcconfig per company (when built)
 │     ├─ src/
 │     │  ├─ api/                 # generated client + query hooks
 │     │  ├─ features/            # auth, today, visit, order, attendance, admin…
@@ -847,7 +848,7 @@ OpenAPI is generated from the Zod schemas (`nestjs-zod` + `@nestjs/swagger`) and
 
 ```
 Exec taps "Submit visit"
-  │ client: read fresh position (expo-location, highest accuracy, 10 s timeout)
+  │ client: read fresh position (react-native-geolocation-service, highest accuracy, 10 s timeout)
   │ client: build payload + ULID idempotency key, persist to SQLite queue first
   ▼
 POST /api/v1/visits   Idempotency-Key: 01JB…
@@ -995,7 +996,7 @@ src/
 
 - **Routing by role.** `useSession().role` selects one of four navigators, so an executive's bundle never renders an admin screen. Deep links are validated against the role before navigating.
 - **Server state** is TanStack Query; **session and UI state** is Zustand persisted to MMKV. Queries that back the Today screen use `staleTime: 30s` and refetch on app foreground.
-- **Location** is `expo-location`, foreground only, with `Accuracy.Highest` and a 10-second timeout; the permission rationale screen appears before the OS prompt. Mock-location detection reads `mocked` on Android positions.
+- **Location** is `react-native-geolocation-service`, foreground only, with high-accuracy mode and a 10-second timeout; the permission rationale screen appears before the OS prompt. Mock-location detection reads `isFromMockProvider` on Android positions.
 - **Maps** use `react-native-maps` with the Google provider; the pin-capture screen keeps the map uncontrolled and reads the marker position on save, which avoids the laggy drag you get from re-rendering on every gesture.
 - **Forms** use `react-hook-form` with the Zod resolvers from `packages/shared`, so the client and the API reject exactly the same payloads.
 - **Styling** is NativeWind with a shared Tailwind preset: `brand` blue `#1D4ED8`, amber for warnings and out-of-range, red for errors, violet for extra and revisit. Tokens, not raw hexes, in feature code.
@@ -1016,19 +1017,29 @@ Only visit submission, extra-shop addition, pin capture and beat start/end are q
 
 ### One build per company
 
-`app.config.ts` reads `COMPANY_CODE`, `COMPANY_NAME`, `API_URL` and the Google Maps key from the EAS profile:
+No Expo/EAS — per-company identity is baked in via **native build variants**, resolved by whichever native toolchain owns that platform.
 
-```ts
-export default ({ config }) => ({
-  ...config,
-  name: process.env.COMPANY_NAME,
-  slug: `fieldsales-${process.env.COMPANY_CODE?.toLowerCase()}`,
-  android: { package: `app.fieldsales.${process.env.COMPANY_CODE?.toLowerCase()}` },
-  extra: { companyCode: process.env.COMPANY_CODE, apiUrl: process.env.API_URL },
-});
+**Android** — one product flavor per company in `android/app/build.gradle`:
+
+```groovy
+flavorDimensions "company"
+productFlavors {
+    srt {
+        applicationIdSuffix ".srt"
+        resValue "string", "app_name", "Sri Ramana Traders"
+        buildConfigField "String", "COMPANY_CODE", '"SRT"'
+        buildConfigField "String", "API_URL", '"https://api.example.com"'
+        buildConfigField "String", "GOOGLE_MAPS_API_KEY", '"..."'
+    }
+    // one block per company; dev/staging get their own flavors too
+}
 ```
 
-`eas.json` holds one build profile per company. Adding a customer is a profile plus a Firebase app registration, not a code change. The login screen reads `companyCode` from `expo-constants` and sends it with every login.
+JS reads these via a small native module bridge (`react-native-config` or an equivalent that surfaces `BuildConfig` fields to JS) rather than `expo-constants`.
+
+**iOS** (when built) — the equivalent is one Xcode scheme + `.xcconfig` per company, each defining the same `COMPANY_CODE`/`API_URL`/`GOOGLE_MAPS_API_KEY` values, consumed via `Info.plist` entries the same bridge module reads.
+
+Adding a customer is a new flavor block (+ scheme/xcconfig on iOS) and a Firebase app registration, not a JS code change. The login screen reads `companyCode` from this native config and sends it with every login — same contract as before, different plumbing.
 
 ---
 
@@ -1103,7 +1114,7 @@ CI gate: typecheck, lint, unit, integration, and a tenant-isolation suite that m
 - Signed, short-lived file URLs; no public bucket or directory listing.
 - Upload validation by magic bytes, size cap, metadata stripped, re-encoded before storage.
 - Helmet, strict CORS allowlist, HTTPS only, HSTS.
-- Mobile: tokens in `expo-secure-store`, no secrets in the JS bundle, certificate pinning considered for a later release, Android `allowBackup=false`.
+- Mobile: tokens in `react-native-keychain` (Keychain on iOS, Keystore-backed on Android), no secrets in the JS bundle, certificate pinning considered for a later release, Android `allowBackup=false`.
 - Privacy: location is read only at pin capture, visit submission and beat start/end — never in the background. The permission rationale says exactly that, and the PRD's retention setting governs how long precise coordinates are kept.
 
 ---
@@ -1185,7 +1196,7 @@ Running `schema` and `contract` to completion before `api` and `mobile` start on
 | T-02 | Do beat start/end times auto-fill attendance? | No for release 1; show them beside attendance for context (BRD OD-09) | Slice 011 |
 | T-03 | Where does the System Admin work? | API + seed script now; a small Next.js console later | Slice 003 |
 | T-04 | PostGIS now or later? | Later; bounding box + Haversine is enough at the stated volumes (ADR-0007) | Slice 006 |
-| T-05 | Expo managed vs bare prebuild? | Prebuild, because `react-native-maps` with the Google provider and per-company native ids need native config | Slice 001 |
+| T-05 | ~~Expo managed vs bare prebuild?~~ | **Decided 2026-10-02: bare React Native CLI (see D-08)** — full native-project control for per-company build variants, no Expo/EAS dependency | Slice 001 |
 | T-06 | OTP channel | SMS now; email as a fallback where a mobile number is missing | Slice 002 |
 | T-07 | Order value and prices | Keep the price-snapshot columns unused in release 1 (BRD OD-07) | Slice 009 |
 | T-08 | Data retention for precise coordinates | Make it a company setting; default keep indefinitely, review before go-live | Slice 016 |

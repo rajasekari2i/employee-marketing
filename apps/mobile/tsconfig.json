@@ -1,15 +1,27 @@
 {
-  "extends": "expo/tsconfig.base",
+  "extends": "@field-sales/config/tsconfig.base.json",
   "compilerOptions": {
-    "strict": true
+    "jsx": "react-native",
+    "customConditions": [
+      "react-native"
+    ],
+    "allowSyntheticDefaultImports": true,
+    // react-native's own package.json exports map mixes case in a way that trips
+    // forceConsistentCasingInFileNames on some platforms; @react-native/typescript-config
+    // disables it for the same reason.
+    "forceConsistentCasingInFileNames": false
   },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "nativewind-env.d.ts"
+  ],
   "exclude": [
     "node_modules",
+    "android",
+    "ios",
     "babel.config.js",
     "metro.config.js",
-    "jest.config.js",
-    "eslint.config.mjs",
-    "android",
-    "ios"
+    "eslint.config.mjs"
   ]
 }

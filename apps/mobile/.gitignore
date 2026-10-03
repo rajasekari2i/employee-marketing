@@ -1,22 +1,17 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
-
 # dependencies
 node_modules/
 
-# Expo
-.expo/
-dist/
-web-build/
-expo-env.d.ts
-
-# Native
-.kotlin/
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
+# Android/Gradle — "**/" so these match at any nesting depth (app/, app/src/..., etc.),
+# not just directly under android/. A first pass used android/.cxx/ (no **/), which only
+# matches .cxx as a direct child of android/ — the real path is android/app/.cxx/, so it
+# silently let ~300 CMake build-intermediate files into a commit before this was caught.
+**/android/.gradle/
+**/android/**/build/
+**/android/local.properties
+**/android/**/.cxx/
+**/android/.kotlin/
+*.keystore
+!debug.keystore
 
 # Metro
 .metro-health-check*
@@ -36,6 +31,6 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
-# generated native folders
+# No iOS/ios project is generated on this machine (Architecture §16.1) — kept out of the
+# repo on purpose, not an oversight.
 /ios
-/android
