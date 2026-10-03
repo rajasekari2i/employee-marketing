@@ -2,6 +2,7 @@ import { loadEnv } from '@field-sales/shared';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
+import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
 
@@ -60,7 +61,20 @@ function corsAllowlist(): string[] {
 async function bootstrap() {
   const env = validateEnv();
 
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // `bufferLogs: true` holds Nest's own bootstrap-phase log lines (module
+  // registration, route mapping, etc.) until `app.useLogger()` below swaps
+  // in the pino-backed logger, so even those early lines come out as pino
+  // JSON instead of Nest's default console formatter. WU-07 DoD item 1 /
+  // Architecture §18 — `LoggerModule.forRoot(...)` (registered in
+  // `app.module.ts`) is what actually configures pino (JSON output, the
+  // `requestId`/`companyId`/`userId`/`route`/`durationMs` fields via
+  // `pinoHttp.customProps`, and the redaction list); this file only wires
+  // the resulting `Logger` in as Nest's app-wide logger.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+  });
+  app.useLogger(app.get(Logger));
+  const logger = app.get(Logger);
 
   app.use(helmet());
 
@@ -76,7 +90,7 @@ async function bootstrap() {
   const port = Number(process.env.PORT ?? 3000);
   await app.listen(port);
 
-  console.log(`API listening on port ${port} (log level: ${env.LOG_LEVEL})`);
+  logger.log(`API listening on port ${port} (log level: ${env.LOG_LEVEL})`);
 }
 
 void bootstrap();

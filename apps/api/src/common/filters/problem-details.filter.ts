@@ -69,8 +69,21 @@ export class ProblemDetailsFilter implements ExceptionFilter {
     const resolved = this.resolve(exception);
 
     if (resolved.status >= 500) {
+      // CLAUDE.md Constitution rule 9 / WU-07's redaction DoD: unlike the
+      // `instance` field below (part of the HTTP response body, not a log
+      // line), this message is written straight to the log — so it must
+      // not carry the raw query string verbatim. A secret passed as a
+      // query value (e.g. `GET /files/:id?token=...`) would otherwise
+      // reach the log in plaintext here even though pino's own req/res
+      // serializers (app.module.ts) already redact it elsewhere, since
+      // this `Logger.error` call builds its own message string completely
+      // independently of those serializers. Dropping the query string
+      // entirely — same fix applied to pino's `url` field — removes the
+      // leak without losing anything this message needs (the path is
+      // what's useful for triage; the query value isn't).
+      const sanitizedUrl = (request.originalUrl ?? request.url).split('?')[0];
       this.logger.error(
-        `${request.method} ${request.originalUrl ?? request.url} -> ${resolved.status} ${resolved.code}`,
+        `${request.method} ${sanitizedUrl} -> ${resolved.status} ${resolved.code}`,
         exception instanceof Error ? exception.stack : exception,
       );
     }

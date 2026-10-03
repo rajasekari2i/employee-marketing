@@ -35,13 +35,23 @@ export class FilesController {
   @Get(':id')
   async getFile(
     @Param('id') id: string,
-    @Query('token') token: string | undefined,
+    // Express's query parser (`qs`) returns an array for a repeated query
+    // key (`?token=A&token=B`) — this `string | undefined` annotation is
+    // what Nest's types claim, not what can actually arrive at runtime, so
+    // a duplicate `token` key previously reached `FilesService.verifyToken`
+    // as a `string[]` and crashed on `.split('.')` being called on an
+    // array (found live by adversarial review). Normalizing to `''` for
+    // anything that isn't actually a string treats that case exactly like
+    // a missing token — `getForServing` already maps an empty token to a
+    // clean `403 FORBIDDEN` — instead of an uncaught 500.
+    @Query('token') token: string | string[] | undefined,
     @Query('thumb') thumb: string | undefined,
     @Res() res: Response,
   ): Promise<void> {
     const wantsThumb = thumb === '1';
+    const tokenValue = typeof token === 'string' ? token : '';
     const { stream, mimeType, byteSize } =
-      await this.filesService.getForServing(id, token ?? '', wantsThumb);
+      await this.filesService.getForServing(id, tokenValue, wantsThumb);
 
     res.status(200);
     res.setHeader('Content-Type', mimeType);
