@@ -65,6 +65,31 @@ export interface ApiRequestOptions {
   body?: unknown;
   /** `false` for a `@Public()` backend route (e.g. `/auth/login`, `/auth/refresh`) — no Authorization header, and a `401` is a real auth failure, never "access token expired". Defaults to `true`. */
   auth?: boolean;
+  /**
+   * User Story 3: a fresh ULID/UUID the caller mints per logical action —
+   * required by every mutating route this story adds (`POST /users`,
+   * `PATCH /users/:id`, `POST /users/:id/salary-rates`, `POST
+   * /files/avatars`), per `RequireIdempotencyKeyGuard` on the API side
+   * (Constitution rule 3). A retried call (same screen action, e.g. a
+   * timeout) should reuse the exact same key; a genuinely new action
+   * should mint a new one.
+   */
+  idempotencyKey?: string;
+}
+
+/**
+ * User Story 3 (specs/001-company-user-auth/orchestration-plan.md, gap
+ * #3): a `FormData` body (the one multipart upload this app makes, `POST
+ * /files/avatars`) must NOT be JSON-stringified, and must NOT carry an
+ * explicit `Content-Type: application/json` header — `fetch` needs to set
+ * its own `multipart/form-data; boundary=...` header itself, which it only
+ * does when no `Content-Type` is set at all. Extending `rawFetch` with this
+ * branch (rather than writing a parallel one-off multipart function) means
+ * the upload call still gets `apiRequest()`'s existing 401-refresh-retry
+ * logic for free.
+ */
+function isFormData(body: unknown): body is FormData {
+  return typeof FormData !== 'undefined' && body instanceof FormData;
 }
 
 /** A single raw HTTP call — no auth header logic, no retry. Throws `ApiError('NETWORK_ERROR', ...)` if `fetch` itself fails (PRD §5's "No internet connection" case). */
@@ -73,19 +98,27 @@ async function rawFetch(
   options: ApiRequestOptions,
   accessToken: string | null,
 ): Promise<Response> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
+  const bodyIsFormData = isFormData(options.body);
+
+  const headers: Record<string, string> = bodyIsFormData
+    ? {}
+    : { 'Content-Type': 'application/json' };
   if (accessToken) {
     headers.Authorization = `Bearer ${accessToken}`;
+  }
+  if (options.idempotencyKey) {
+    headers['Idempotency-Key'] = options.idempotencyKey;
   }
 
   try {
     return await fetch(`${API_URL}${path}`, {
       method: options.method ?? 'GET',
       headers,
-      body:
-        options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      body: bodyIsFormData
+        ? (options.body as FormData)
+        : options.body !== undefined
+          ? JSON.stringify(options.body)
+          : undefined,
     });
   } catch {
     throw new ApiError(
@@ -146,6 +179,22 @@ async function refreshAccessToken(): Promise<string | null> {
     await clearSession();
     return null;
   }
+}
+
+/**
+ * Mints a fresh client-side identifier for `ApiRequestOptions.idempotencyKey`
+ * (User Story 3). Not a cryptographically-secure UUID — Hermes has no
+ * guaranteed `crypto.randomUUID()` across the React Native versions this
+ * app targets, and a new dependency just for ULID generation is out of this
+ * story's scope — but an `Idempotency-Key` only needs to be unique per
+ * logical action (Constitution rule 3's own premise: a fresh key is minted
+ * client-side per action, replayed verbatim only on a genuine retry of that
+ * same action), not unguessable, so a timestamp plus two random segments is
+ * sufficient entropy for this app's actual concurrency.
+ */
+export function generateIdempotencyKey(): string {
+  const randomSegment = () => Math.random().toString(36).slice(2, 10);
+  return `${Date.now().toString(36)}-${randomSegment()}-${randomSegment()}`;
 }
 
 /**

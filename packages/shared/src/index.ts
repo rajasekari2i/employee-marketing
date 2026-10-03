@@ -33,3 +33,19 @@ export type {
   ListCompaniesQuery,
   UpdateCompanyInput,
 } from './companies.schema';
+
+export {
+  TENANT_ASSIGNABLE_ROLE_KEYS,
+  tenantAssignableRoleKeySchema,
+  createUserSchema,
+  updateUserSchema,
+  salaryRateSchema,
+  listUsersQuerySchema,
+} from './users.schema';
+export type {
+  TenantAssignableRoleKey,
+  CreateUserInput,
+  UpdateUserInput,
+  SalaryRateInput,
+  ListUsersQuery,
+} from './users.schema';

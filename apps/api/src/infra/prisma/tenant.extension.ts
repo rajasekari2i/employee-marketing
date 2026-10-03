@@ -25,7 +25,18 @@ export interface TenantClsStore extends ClsStore {
  * test described in Architecture §5 is deferred per CLAUDE.md's no-tests
  * policy (WU-03 scope note) — this set is the only guard for now.
  */
-export const TENANT_MODELS = new Set<string>(['User', 'FileObject']);
+export const TENANT_MODELS = new Set<string>([
+  'User',
+  'FileObject',
+  // User Story 3 (specs/001-company-user-auth/orchestration-plan.md, gap
+  // #7): `UserSalaryRate.companyId` is a genuine, always-non-null tenant
+  // column, but had no real writer anywhere until `POST /users` — closing
+  // this WU-03 oversight the moment a real write path exists, the same way
+  // `FileObject` itself was once found missing its `is_system_context`
+  // escape. See the sibling RLS migration
+  // (`<timestamp>_rls_user_salary_rate/migration.sql`) for Layer 2.
+  'UserSalaryRate',
+]);
 
 /** Operations whose `where` clause must be narrowed to the tenant. */
 const READ_OPS = new Set<string>([
@@ -99,8 +110,33 @@ export const tenantExtension = (cls: ClsService<TenantClsStore>) =>
             const scopedArgs = args as ScopedArgs;
 
             if (READ_OPS.has(operation) || WRITE_SCOPED_OPS.has(operation)) {
+              // User Story 3 (specs/001-company-user-auth/orchestration-plan
+              // .md): found live, by `PATCH /users/:id` — the first ordinary
+              // (non-`@SkipTenant()`) code anywhere to call `tx.user.update()`
+              // through this extension (`me.service.ts`/`auth.service.ts`
+              // only ever update via their own UNEXTENDED module-level
+              // Prisma client, and `companies.service.ts`'s `update()` is
+              // against `Company`, not a `TENANT_MODELS` entry) — wrapping
+              // `where` in `{ AND: [originalWhere, { companyId }] }` makes
+              // Prisma's client-side validation reject `update`/`upsert`/
+              // `delete` outright with "Argument `where` of type
+              // UserWhereUniqueInput needs at least one of `id`, ... ":
+              // those operations require a genuine unique field directly at
+              // the top level of `where`, not nested under `AND`. A flat
+              // merge instead — `{ ...originalWhere, companyId }` — is the
+              // form Prisma's "filtered unique where" feature actually
+              // accepts (a unique field alongside extra non-unique filters,
+              // all top-level keys implicitly ANDed) and works identically
+              // for `findMany`/`findFirst`-style general `WhereInput` too
+              // (confirmed against this same `GET /users?search=` call,
+              // which already combines an `OR` clause with this filter).
+              // `companyId` spread last so CLS's own value always wins over
+              // anything a (hypothetical) caller already put in `where`,
+              // same "server owns the truth" posture as the `create`/
+              // `createMany` injection below.
               scopedArgs.where = {
-                AND: [scopedArgs.where ?? {}, { companyId }],
+                ...(scopedArgs.where ?? {}),
+                companyId,
               };
             }
 

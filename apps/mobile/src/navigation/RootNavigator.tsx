@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ActivityIndicator, Text, View } from 'react-native';
-import type { RoleKey } from '@field-sales/shared';
+import type { RoleKey, UserStatus } from '@field-sales/shared';
 
 import { HomeScreen } from '../features/admin/HomeScreen';
+import { UserFormScreen } from '../features/admin/UserFormScreen';
+import { UsersListScreen } from '../features/admin/UsersListScreen';
 import { SignInScreen } from '../features/auth/SignInScreen';
 import {
   getSession,
@@ -42,9 +44,29 @@ export type AuthStackParamList = {
   SignIn: undefined;
 };
 
+/**
+ * User Story 3's `UserForm` route carries the row the Users list screen
+ * already fetched (`GET /users`'s per-item shape) rather than just an id —
+ * `contracts/users.md` has no `GET /users/:id` detail endpoint in this
+ * slice, so this is the only source `UserFormScreen.tsx` has to prefill an
+ * edit from. `undefined` means "create a new user."
+ */
+export interface UserSummaryForEdit {
+  id: string;
+  name: string;
+  email: string | null;
+  role: RoleKey;
+  status: UserStatus;
+  username: string | null;
+  halfDayRate: string | null;
+  photoUrl: string | null;
+}
+
 export type AdminStackParamList = {
   Home: undefined;
   Profile: undefined;
+  UsersList: undefined;
+  UserForm: { user?: UserSummaryForEdit } | undefined;
 };
 
 export type ComingSoonStackParamList = {
@@ -108,6 +130,18 @@ function AdminNavigator() {
         name="Profile"
         component={ProfilePlaceholderScreen}
         options={{ title: 'Profile' }}
+      />
+      <AdminStack.Screen
+        name="UsersList"
+        component={UsersListScreen}
+        options={{ title: 'Users' }}
+      />
+      <AdminStack.Screen
+        name="UserForm"
+        component={UserFormScreen}
+        options={({ route }) => ({
+          title: route.params?.user ? 'Edit user' : 'Add user',
+        })}
       />
     </AdminStack.Navigator>
   );

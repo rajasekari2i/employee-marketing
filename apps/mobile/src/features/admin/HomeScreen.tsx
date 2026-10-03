@@ -144,6 +144,16 @@ export function HomeScreen() {
               className="px-4 py-3"
               onPress={() => {
                 setMenuOpen(false);
+                navigation.navigate('UsersList');
+              }}
+              testID="home-menu-users"
+            >
+              <Text className="text-gray-800">Users</Text>
+            </Pressable>
+            <Pressable
+              className="px-4 py-3"
+              onPress={() => {
+                setMenuOpen(false);
                 navigation.navigate('Profile');
               }}
               testID="home-menu-profile"

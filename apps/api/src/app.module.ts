@@ -22,6 +22,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { CompaniesModule } from './modules/companies/companies.module';
 import { MeModule } from './modules/me/me.module';
 import { FilesModule } from './modules/files/files.module';
+import { UsersModule } from './modules/users/users.module';
 
 @Module({
   imports: [
@@ -41,7 +42,14 @@ import { FilesModule } from './modules/files/files.module';
     // WU-06 (specs/001-company-user-auth/orchestration-plan.md): the
     // avatar file pipeline. `GET /files/:id?token=` is `@Public()` (its
     // own HMAC query-token auth, not a JWT) — see files.controller.ts.
+    // User Story 3 adds `POST /files/avatars` to this same module/
+    // controller (ordinary authenticated, not `@Public()`).
     FilesModule,
+    // User Story 3 (specs/001-company-user-auth/orchestration-plan.md):
+    // `GET/POST /users`, `PATCH /users/:id`, `POST
+    // /users/:id/salary-rates` — the first ordinary (non-`@SkipTenant()`)
+    // module to genuinely exercise Layer-1 tenant scoping end-to-end.
+    UsersModule,
     // Establishes one AsyncLocalStorage-backed context per request so the
     // tenant isolation layer (Architecture §5 / CLAUDE.md Constitution
     // rule 2) — the Prisma extension in src/infra/prisma/tenant.extension.ts
