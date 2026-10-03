@@ -27,6 +27,15 @@ export const ERROR_CODES = [
   'OTP_ATTEMPTS_EXHAUSTED',
   'RATE_LIMITED',
   'NOT_FOUND',
+  // WU-06 (contracts/files.md's `GET /files/:id`): a missing, malformed,
+  // signature-invalid or expired signed file token. Deliberately its own
+  // code rather than reusing `FORBIDDEN_ROLE` (that one means "your role
+  // doesn't permit this", which isn't the case here — this route has no
+  // JWT/role at all, @Public() by design, gated only by the query-string
+  // token) or `INVALID_CREDENTIALS` (401; contracts/files.md calls for
+  // "401/403 FORBIDDEN" and this codebase's `AppError` maps one status per
+  // code, so this slice picks 403 uniformly — see files.service.ts).
+  'FORBIDDEN',
   'INTERNAL',
 ] as const;
 
@@ -49,6 +58,7 @@ export const ERROR_STATUS: Readonly<Record<ErrorCode, number>> = {
   IDEMPOTENCY_KEY_REUSED: 409,
   RATE_LIMITED: 429,
   NOT_FOUND: 404,
+  FORBIDDEN: 403,
   INTERNAL: 500,
 };
 
@@ -69,6 +79,7 @@ export const ERROR_TITLES: Readonly<Record<ErrorCode, string>> = {
   IDEMPOTENCY_KEY_REUSED: 'Idempotency key reused',
   RATE_LIMITED: 'Too many requests',
   NOT_FOUND: 'Not found',
+  FORBIDDEN: 'Forbidden',
   INTERNAL: 'Internal server error',
 };
 

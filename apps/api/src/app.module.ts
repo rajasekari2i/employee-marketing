@@ -15,6 +15,7 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { AuthModule } from './modules/auth/auth.module';
 import { CompaniesModule } from './modules/companies/companies.module';
 import { MeModule } from './modules/me/me.module';
+import { FilesModule } from './modules/files/files.module';
 
 @Module({
   imports: [
@@ -31,6 +32,10 @@ import { MeModule } from './modules/me/me.module';
     // `GET /me` — covered by the already-global JwtAuthGuard/
     // ActiveAccountGuard with zero new guard code.
     MeModule,
+    // WU-06 (specs/001-company-user-auth/orchestration-plan.md): the
+    // avatar file pipeline. `GET /files/:id?token=` is `@Public()` (its
+    // own HMAC query-token auth, not a JWT) — see files.controller.ts.
+    FilesModule,
     // Establishes one AsyncLocalStorage-backed context per request so the
     // tenant isolation layer (Architecture §5 / CLAUDE.md Constitution
     // rule 2) — the Prisma extension in src/infra/prisma/tenant.extension.ts
