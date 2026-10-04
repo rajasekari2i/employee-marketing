@@ -142,9 +142,21 @@ export class FilesService {
    * metadata + resize + WebP-encode (full + thumbnail) via `sharp`, hash
    * the result, dedupe within the company by `sha256`, otherwise persist
    * to storage and insert one `FileObject` row.
+   *
+   * `companyId: string | null` (User Story 4, decision #5): `PATCH
+   * /me/photo` (contracts/me.md) is "any authenticated role", which
+   * includes `SYSTEM_ADMIN` (`companyId: null`) — this widening lets this
+   * method serve that caller too, mirroring the `string | null` shape
+   * `getForServing`/`signFileUrl` already use in this same file. Sets
+   * `app.is_system_context` instead of `app.company_id` when `companyId`
+   * is `null` (the same escape `auth.service.ts`/`active-account.guard.ts`
+   * already use for the identical reason), and uses
+   * `NULL_COMPANY_SENTINEL` for the storage-key path segment rather than
+   * letting `companyId` flow unguarded into a template literal (which
+   * would otherwise silently write a literal `"photos/null/..."` path).
    */
   async uploadAvatar(
-    companyId: string,
+    companyId: string | null,
     uploadedBy: string,
     buffer: Buffer,
     declaredMimeType: string,
@@ -222,11 +234,18 @@ export class FilesService {
     const sha256 = createHash('sha256').update(fullBuffer).digest('hex');
 
     return prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT set_config('app.company_id', ${companyId}, true)`;
+      if (companyId) {
+        await tx.$executeRaw`SELECT set_config('app.company_id', ${companyId}, true)`;
+      } else {
+        await tx.$executeRaw`SELECT set_config('app.is_system_context', 'true', true)`;
+      }
 
       // Dedupe within the company (DoD item 2): an identical processed
       // image reuses the existing row/storage objects rather than writing
-      // duplicates.
+      // duplicates. A plain `where: { companyId: null, ... }` Prisma
+      // filter already means "rows where this column is literally null",
+      // same grouping `User` rows already use for a `null` companyId — no
+      // special-casing needed beyond the RLS session variable above.
       const existing = await tx.fileObject.findFirst({
         where: { companyId, kind: 'USER_AVATAR', sha256 },
       });
@@ -238,8 +257,9 @@ export class FilesService {
       const now = new Date();
       const yyyy = String(now.getUTCFullYear());
       const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
-      const storageKey = `photos/${companyId}/${yyyy}/${mm}/${id}.webp`;
-      const thumbKey = `photos/${companyId}/${yyyy}/${mm}/${id}_thumb.webp`;
+      const companySegment = companyId ?? NULL_COMPANY_SENTINEL;
+      const storageKey = `photos/${companySegment}/${yyyy}/${mm}/${id}.webp`;
+      const thumbKey = `photos/${companySegment}/${yyyy}/${mm}/${id}_thumb.webp`;
 
       await this.storage.put(storageKey, fullBuffer, 'image/webp');
       await this.storage.put(thumbKey, thumbBuffer, 'image/webp');

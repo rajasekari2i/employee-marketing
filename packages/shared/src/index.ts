@@ -17,8 +17,24 @@ export {
 export { ERROR_CODES, ERROR_STATUS, ERROR_TITLES, AppError } from './errors';
 export type { ErrorCode, ErrorDetail } from './errors';
 
-export { loginSchema, refreshSchema, logoutSchema } from './auth.schema';
-export type { LoginInput, RefreshInput, LogoutInput } from './auth.schema';
+export {
+  loginSchema,
+  refreshSchema,
+  logoutSchema,
+  forgotPasswordSchema,
+  verifyOtpSchema,
+  resetPasswordSchema,
+  changePasswordSchema,
+} from './auth.schema';
+export type {
+  LoginInput,
+  RefreshInput,
+  LogoutInput,
+  ForgotPasswordInput,
+  VerifyOtpInput,
+  ResetPasswordInput,
+  ChangePasswordInput,
+} from './auth.schema';
 
 export {
   passwordPolicySchema,
