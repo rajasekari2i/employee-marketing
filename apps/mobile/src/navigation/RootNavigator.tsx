@@ -5,8 +5,11 @@ import { ActivityIndicator, Text, View } from 'react-native';
 import type { RoleKey, UserStatus } from '@field-sales/shared';
 
 import { HomeScreen } from '../features/admin/HomeScreen';
+import { ProfileScreen } from '../features/admin/ProfileScreen';
 import { UserFormScreen } from '../features/admin/UserFormScreen';
 import { UsersListScreen } from '../features/admin/UsersListScreen';
+import { ChangePasswordScreen } from '../features/auth/ChangePasswordScreen';
+import { ForgotPasswordScreen } from '../features/auth/ForgotPasswordScreen';
 import { SignInScreen } from '../features/auth/SignInScreen';
 import {
   getSession,
@@ -42,6 +45,8 @@ import {
 
 export type AuthStackParamList = {
   SignIn: undefined;
+  /** User Story 4, DoD item 10 (PRD §4 screen 1.2). */
+  ForgotPassword: undefined;
 };
 
 /**
@@ -65,6 +70,8 @@ export interface UserSummaryForEdit {
 export type AdminStackParamList = {
   Home: undefined;
   Profile: undefined;
+  /** User Story 4, DoD item 9 (PRD §4 screen 1.10). */
+  ChangePassword: undefined;
   UsersList: undefined;
   UserForm: { user?: UserSummaryForEdit } | undefined;
 };
@@ -76,20 +83,6 @@ export type ComingSoonStackParamList = {
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AdminStack = createNativeStackNavigator<AdminStackParamList>();
 const ComingSoonStack = createNativeStackNavigator<ComingSoonStackParamList>();
-
-/**
- * DoD item 6's "Profile can navigate to an empty/placeholder screen for
- * now" — the real Profile screen (4.14/1.9/3.9) is a later story.
- */
-function ProfilePlaceholderScreen() {
-  return (
-    <View className="flex-1 items-center justify-center bg-white px-6">
-      <Text className="text-center text-base text-gray-500">
-        Profile — coming in a later update.
-      </Text>
-    </View>
-  );
-}
 
 /** DoD item 5: `MANAGER`/`MARKETING_EXECUTIVE` (and any other non-Admin role) land here — their own stacks are out of this story's scope. */
 function ComingSoonScreen() {
@@ -114,6 +107,11 @@ function AuthNavigator() {
   return (
     <AuthStack.Navigator screenOptions={{ headerShown: false }}>
       <AuthStack.Screen name="SignIn" component={SignInScreen} />
+      <AuthStack.Screen
+        name="ForgotPassword"
+        component={ForgotPasswordScreen}
+        options={{ headerShown: true, title: 'Forgot password' }}
+      />
     </AuthStack.Navigator>
   );
 }
@@ -128,8 +126,13 @@ function AdminNavigator() {
       />
       <AdminStack.Screen
         name="Profile"
-        component={ProfilePlaceholderScreen}
+        component={ProfileScreen}
         options={{ title: 'Profile' }}
+      />
+      <AdminStack.Screen
+        name="ChangePassword"
+        component={ChangePasswordScreen}
+        options={{ title: 'Change password' }}
       />
       <AdminStack.Screen
         name="UsersList"

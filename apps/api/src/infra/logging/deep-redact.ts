@@ -21,6 +21,18 @@
  * and immediately before final JSON serialization, so this is the last
  * point to redact anything, from any source, before it becomes a log line.
  */
+/**
+ * User Story 4 (specs/001-company-user-auth/orchestration-plan.md),
+ * decision #4b: `resetToken`, `currentPassword`, `newPassword`,
+ * `confirmPassword` are genuinely new, unambiguous, sensitive-only key
+ * names a future handler could log by accident. Deliberately **not**
+ * adding bare `code` (verify-otp's 6-digit-OTP field) — `code` is also
+ * this codebase's existing, non-sensitive field name for `Company.code`
+ * and every `ProblemDetails.code`, and this matcher has no path-scoping,
+ * so adding it would redact those too for no live benefit (pino-http's own
+ * `req` serializer never includes `req.body` at all, confirmed repeatedly
+ * during WU-07's own adversarial review rounds).
+ */
 const SENSITIVE_KEYS = new Set<string>([
   'password',
   'token',
@@ -29,6 +41,10 @@ const SENSITIVE_KEYS = new Set<string>([
   'longitude',
   'reasonText',
   'otp',
+  'resetToken',
+  'currentPassword',
+  'newPassword',
+  'confirmPassword',
 ]);
 
 const REDACTED = '[REDACTED]';

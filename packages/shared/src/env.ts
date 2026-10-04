@@ -32,6 +32,12 @@ export const envSchema = z.object({
   FILE_URL_SECRET: z
     .string()
     .min(32, 'FILE_URL_SECRET must be at least 32 characters'),
+  // User Story 4, decision #1: a genuinely separate security boundary from
+  // FILE_URL_SECRET (file-serving authority vs. password-reset authority
+  // should not share a key), used to HMAC-sign the stateless `resetToken`.
+  PASSWORD_RESET_SECRET: z
+    .string()
+    .min(32, 'PASSWORD_RESET_SECRET must be at least 32 characters'),
   RAILWAY_VOLUME_MOUNT_PATH: z
     .string()
     .min(1, 'RAILWAY_VOLUME_MOUNT_PATH is required'),

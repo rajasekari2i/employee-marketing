@@ -292,4 +292,22 @@ export class TokenService {
       data: { revokedAt: new Date() },
     });
   }
+
+  /**
+   * User Story 4 (specs/001-company-user-auth/orchestration-plan.md),
+   * decision #9 / FR-014: revokes EVERY currently-active `RefreshToken` row
+   * for `userId` — not just one presented token — called by
+   * `AuthService.resetPassword()`/`changePassword()` on success, alongside
+   * a `User.tokenVersion` bump (that half stops outstanding *access*
+   * tokens; this half stops an already-issued refresh token from minting a
+   * fresh one, which the `tokenVersion` bump alone would not prevent).
+   * Mirrors {@link revokeRefreshToken}'s own `updateMany` shape, just
+   * scoped to every row for this user instead of a single token id.
+   */
+  async revokeAllRefreshTokens(userId: string): Promise<void> {
+    await prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
 }

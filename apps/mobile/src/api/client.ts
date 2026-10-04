@@ -1,4 +1,4 @@
-import type { ErrorCode } from '@field-sales/shared';
+import type { ErrorCode, ErrorDetail } from '@field-sales/shared';
 
 import { API_URL } from '../config';
 import { clearSession, getSession, updateTokens } from '../lib/secureSession';
@@ -34,6 +34,7 @@ import { clearSession, getSession, updateTokens } from '../lib/secureSession';
 interface ProblemDetails {
   code?: ErrorCode | 'INTERNAL';
   detail?: string;
+  errors?: ErrorDetail[];
   [key: string]: unknown;
 }
 
@@ -42,21 +43,27 @@ interface ProblemDetails {
  * codebase's own `ErrorCode` vocabulary (from the response body) or
  * `NETWORK_ERROR` for a request that never got a response at all (no
  * signal / `fetch` itself rejected) — `SignInScreen.tsx` maps both onto
- * PRD §5's exact copy.
+ * PRD §5's exact copy. `details` carries the response body's own `errors`
+ * array (User Story 4) — field-level data like `verify-otp`'s
+ * `attemptsRemaining` lives here as a proper structured value, not folded
+ * into `detail`'s free-text message for a caller to pattern-match out.
  */
 export class ApiError extends Error {
   public readonly code: ErrorCode | 'INTERNAL' | 'NETWORK_ERROR';
   public readonly status: number;
+  public readonly details?: ErrorDetail[];
 
   constructor(
     code: ErrorCode | 'INTERNAL' | 'NETWORK_ERROR',
     status: number,
     detail: string,
+    details?: ErrorDetail[],
   ) {
     super(detail);
     this.name = 'ApiError';
     this.code = code;
     this.status = status;
+    this.details = details;
   }
 }
 
@@ -139,7 +146,7 @@ async function toResult<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const code = body?.code ?? 'INTERNAL';
     const detail = body?.detail ?? 'An unexpected error occurred.';
-    throw new ApiError(code, response.status, detail);
+    throw new ApiError(code, response.status, detail, body?.errors);
   }
 
   return body as T;

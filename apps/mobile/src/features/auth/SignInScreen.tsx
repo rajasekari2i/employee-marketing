@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
@@ -18,6 +20,7 @@ import { ApiError, apiRequest } from '../../api/client';
 import { AppLogo } from '../../components/AppLogo';
 import { COMPANY_CODE } from '../../config';
 import { setSession } from '../../lib/secureSession';
+import type { AuthStackParamList } from '../../navigation/RootNavigator';
 
 /**
  * User Story 2 (specs/001-company-user-auth/orchestration-plan.md), DoD
@@ -62,7 +65,13 @@ function errorMessageFor(error: unknown): string {
   return 'Something went wrong at our end. Try again in a moment.';
 }
 
+type SignInNavigationProp = NativeStackNavigationProp<
+  AuthStackParamList,
+  'SignIn'
+>;
+
 export function SignInScreen() {
+  const navigation = useNavigation<SignInNavigationProp>();
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const {
@@ -168,6 +177,16 @@ export function SignInScreen() {
           ) : (
             <Text className="font-semibold text-white">Sign in</Text>
           )}
+        </Pressable>
+
+        <Pressable
+          className="mt-4 items-center py-2"
+          onPress={() => navigation.navigate('ForgotPassword')}
+          testID="sign-in-forgot-password"
+        >
+          <Text className="text-sm font-medium text-brand-700">
+            Forgot password?
+          </Text>
         </Pressable>
       </View>
     </View>
