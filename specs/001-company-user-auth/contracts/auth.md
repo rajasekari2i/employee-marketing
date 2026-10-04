@@ -37,13 +37,13 @@ Base path `/api/v1/auth`. All shapes are Zod schemas in `packages/shared/src/aut
 
 ## `POST /auth/forgot-password` — public
 
-**Request**: `{ username: string }`
+**Request**: `{ companyCode?: string; username: string }` — `companyCode` is optional, exactly like `POST /auth/login`'s own field (omitted only for a `SYSTEM_ADMIN`). **Correction, found during User Story 4's planning**: an earlier version of this contract omitted `companyCode` entirely, which is unworkable — `User.username` is only unique *within* a company (FR-006 explicitly allows the same username to repeat across different companies), so a bare username has no well-defined target to reset without it. The mobile client supplies the same build-time `COMPANY_CODE` constant `SignInScreen` already sends for login.
 **Response `200`**: `{ maskedMobile: string }` — e.g. `"+91•••••••123"`. Always returns `200` with the same shape and timing whether or not the username exists, so usernames cannot be enumerated (Edge Cases, spec.md).
 Sends a 6-digit OTP via the `SmsAdapter` (research.md #5) when the username does exist; silently no-ops otherwise.
 
 ## `POST /auth/verify-otp` — public
 
-**Request**: `{ username: string; code: string }` (`code`: exactly 6 digits)
+**Request**: `{ companyCode?: string; username: string; code: string }` (`code`: exactly 6 digits; `companyCode` same correction/semantics as `forgot-password` above)
 **Response `200`**: `{ resetToken: string }` — short-lived (10 min), single-purpose token for the next call only.
 **Errors**: `OTP_INCORRECT` (400, includes `attemptsRemaining`), `OTP_EXPIRED` (410), `OTP_ATTEMPTS_EXHAUSTED` (429 — must request a new code).
 
@@ -57,6 +57,6 @@ Sends a 6-digit OTP via the `SmsAdapter` (research.md #5) when the username does
 
 **Request**: `{ currentPassword: string; newPassword: string; confirmPassword: string }`
 **Response `204`**. Revokes every other active session for that user (FR-014).
-**Errors**: `INVALID_CREDENTIALS` (400 — wrong current password), `VALIDATION_FAILED` (new password fails FR-013's policy or matches the current one).
+**Errors**: `INVALID_CREDENTIALS` (401 — wrong current password; `packages/shared/src/errors.ts`'s `ERROR_STATUS` fixes one status per code globally, overriding this file's own earlier `400`), `VALIDATION_FAILED` (new password fails FR-013's policy or matches the current one).
 
 All five mutating endpoints above (`reset-password`, `change-password`, and anything under Companies/Users below) require an `Idempotency-Key` header; see `data-model.md`'s `IdempotencyKey` note.

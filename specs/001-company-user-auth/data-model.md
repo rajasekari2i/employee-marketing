@@ -114,7 +114,7 @@ Seeded, not user-editable in this slice.
 
 ## IdempotencyKey
 
-Not a feature-specific model but every command in this slice (`POST /companies`, `POST /users`, `POST /auth/change-password`, `POST /auth/reset-password`) writes one row keyed by the client-supplied `Idempotency-Key`, per Architecture §11. A retry with the same key and the same request body replays the stored response; a retry with the same key and a **different** body is rejected (`IDEMPOTENCY_KEY_REUSED`).
+Not a feature-specific model but every command in this slice requiring an `Idempotency-Key` (`POST /companies`, `POST /users`, `PATCH /users/:id`, `POST /users/:id/salary-rates`, `POST /files/avatars`, `POST /auth/change-password`, `POST /auth/reset-password`, `PATCH /me/photo` — this list grew as User Stories 3/4 added routes Architecture §11 didn't yet enumerate when this note was first written) writes one row keyed by the client-supplied `Idempotency-Key`, per Architecture §11. A retry with the same key and the same request body replays the stored response; a retry with the same key and a **different** body is rejected (`IDEMPOTENCY_KEY_REUSED`).
 
 ## AuditEvent
 
