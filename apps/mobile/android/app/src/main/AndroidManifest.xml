@@ -15,6 +15,15 @@
       android:name="android.permission.READ_EXTERNAL_STORAGE"
       android:maxSdkVersion="32" />
 
+    <!-- 015-notifications (not yet built, CLAUDE.md build order) will need
+         this to push visit/exception alerts. Declared now, on its own, so
+         the OS exposes a real Settings > Notifications toggle for this app
+         ahead of that slice — on API 33+ an app that never declares this
+         permission can't have it granted at all, by the OS itself. No
+         PermissionsAndroid.request() call exists yet; that's that slice's
+         job, not this manifest entry's. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
       android:name=".MainApplication"
       android:label="@string/app_name"
