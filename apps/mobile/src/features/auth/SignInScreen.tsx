@@ -18,6 +18,7 @@ import {
 
 import { ApiError, apiRequest } from '../../api/client';
 import { AppLogo } from '../../components/AppLogo';
+import { PasswordInput } from '../../components/PasswordInput';
 import { COMPANY_CODE } from '../../config';
 import { setSession } from '../../lib/secureSession';
 import type { AuthStackParamList } from '../../navigation/RootNavigator';
@@ -139,14 +140,10 @@ export function SignInScreen() {
           control={control}
           name="password"
           render={({ field: { onBlur, onChange, value } }) => (
-            <TextInput
-              autoCapitalize="none"
-              autoCorrect={false}
-              className="rounded-md border border-gray-300 px-3 py-2 text-base text-gray-900"
+            <PasswordInput
               editable={!isSubmitting}
               onBlur={onBlur}
               onChangeText={onChange}
-              secureTextEntry
               testID="sign-in-password"
               value={value}
             />

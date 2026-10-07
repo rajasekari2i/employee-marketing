@@ -302,7 +302,11 @@ export class FilesService {
   ): string {
     const token = this.signToken(fileId, viewerUserId, companyId);
     const query = thumb ? `token=${token}&thumb=1` : `token=${token}`;
-    return `/files/${fileId}?${query}`;
+    // Relative to the API's own origin, same convention as
+    // apps/mobile/src/api/client.ts's `${API_URL}${path}` — must match
+    // main.ts's `api/v1` global prefix, under which this controller is
+    // actually mounted.
+    return `/api/v1/files/${fileId}?${query}`;
   }
 
   /**

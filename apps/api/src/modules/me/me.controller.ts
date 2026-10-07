@@ -8,6 +8,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags } from '@nestjs/swagger';
 import { AppError } from '@field-sales/shared';
 
 // `Express.Multer.File` below is the same global ambient type
@@ -34,6 +35,7 @@ const AVATAR_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
  * ("any authenticated role"). No `@Roles()`/`@Permissions()` restriction:
  * every role may read its own profile.
  */
+@ApiTags('me')
 @Controller('me')
 export class MeController {
   constructor(private readonly meService: MeService) {}

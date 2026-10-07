@@ -171,10 +171,10 @@ Mobile + API monorepo per `plan.md`'s Project Structure: `apps/api/` (NestJS), `
 
 **Purpose**: Final verification across all four stories together.
 
-- [ ] T071 [P] Run the full `quickstart.md` walkthrough end-to-end against a freshly migrated and seeded database, confirming every numbered expectation in §1–§5 holds
-- [ ] T072 [P] Audit every log statement touched by this feature against the NFR-10 redaction list (`password`, `token`, `authorization`, `latitude`, `longitude`, `reasonText`, `otp`) — grep `apps/api/src` for any direct `console.log`/unredacted `logger` call that could leak one of these
-- [ ] T073 Re-run quickstart.md §5 (two companies, one with a deliberately repeated admin username) and confirm the `GET /users` list for one company never includes the other's rows
-- [ ] T074 [P] Wire OpenAPI generation (`nestjs-zod` + `@nestjs/swagger`) for the `auth`, `companies`, `users`, `me` and `files` modules and commit the generated spec to `docs/openapi.json` (Architecture §9)
+- [x] T071 [P] Run the full `quickstart.md` walkthrough end-to-end against a freshly migrated and seeded database, confirming every numbered expectation in §1–§5 holds
+- [x] T072 [P] Audit every log statement touched by this feature against the NFR-10 redaction list (`password`, `token`, `authorization`, `latitude`, `longitude`, `reasonText`, `otp`) — grep `apps/api/src` for any direct `console.log`/unredacted `logger` call that could leak one of these
+- [x] T073 Re-run quickstart.md §5 (two companies, one with a deliberately repeated admin username) and confirm the `GET /users` list for one company never includes the other's rows
+- [x] T074 [P] Wire OpenAPI generation (`nestjs-zod` + `@nestjs/swagger`) for the `auth`, `companies`, `users`, `me` and `files` modules and commit the generated spec to `docs/openapi.json` (Architecture §9)
 
 ---
 

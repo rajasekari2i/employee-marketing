@@ -1,15 +1,10 @@
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-} from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Text } from 'react-native';
 import { changePasswordSchema } from '@field-sales/shared';
 
 import { ApiError, apiRequest, generateIdempotencyKey } from '../../api/client';
+import { PasswordInput } from '../../components/PasswordInput';
 import { clearSession } from '../../lib/secureSession';
 
 /**
@@ -107,14 +102,10 @@ export function ChangePasswordScreen() {
         control={control}
         name="currentPassword"
         render={({ field: { onBlur, onChange, value } }) => (
-          <TextInput
-            autoCapitalize="none"
-            autoCorrect={false}
-            className="rounded-md border border-gray-300 px-3 py-2 text-base text-gray-900"
+          <PasswordInput
             editable={!isSubmitting}
             onBlur={onBlur}
             onChangeText={onChange}
-            secureTextEntry
             testID="change-password-current"
             value={value}
           />
@@ -132,14 +123,10 @@ export function ChangePasswordScreen() {
         control={control}
         name="newPassword"
         render={({ field: { onBlur, onChange, value } }) => (
-          <TextInput
-            autoCapitalize="none"
-            autoCorrect={false}
-            className="rounded-md border border-gray-300 px-3 py-2 text-base text-gray-900"
+          <PasswordInput
             editable={!isSubmitting}
             onBlur={onBlur}
             onChangeText={onChange}
-            secureTextEntry
             testID="change-password-new"
             value={value}
           />
@@ -159,14 +146,10 @@ export function ChangePasswordScreen() {
         control={control}
         name="confirmPassword"
         render={({ field: { onBlur, onChange, value } }) => (
-          <TextInput
-            autoCapitalize="none"
-            autoCorrect={false}
-            className="rounded-md border border-gray-300 px-3 py-2 text-base text-gray-900"
+          <PasswordInput
             editable={!isSubmitting}
             onBlur={onBlur}
             onChangeText={onChange}
-            secureTextEntry
             testID="change-password-confirm"
             value={value}
           />

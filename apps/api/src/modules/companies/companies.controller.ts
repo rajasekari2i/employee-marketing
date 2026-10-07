@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { createZodDto } from 'nestjs-zod';
 import {
   createCompanySchema,
@@ -44,6 +45,7 @@ class UpdateCompanyDto extends createZodDto(updateCompanySchema) {}
  * roles.guard.ts's own doc comment) — applied here via `@UseGuards()`,
  * the first controller in this codebase to need it.
  */
+@ApiTags('companies')
 @Controller('companies')
 @UseGuards(RolesGuard)
 @Roles('SYSTEM_ADMIN')

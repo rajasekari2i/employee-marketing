@@ -9,6 +9,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { createZodDto } from 'nestjs-zod';
 import {
   AppError,
@@ -43,6 +44,7 @@ class SalaryRateDto extends createZodDto(salaryRateSchema) {}
  * transaction to the caller's company before touching any tenant-isolated
  * table.
  */
+@ApiTags('users')
 @Controller('users')
 @UseGuards(RolesGuard)
 @Roles('COMPANY_ADMIN')

@@ -6,7 +6,7 @@ This is a runnable walkthrough, not a test suite (CLAUDE.md's standing policy su
 
 - API running locally with `DATABASE_URL` pointed at a dev Postgres and `SEED_SYSTEM_ADMIN_USERNAME` / `SEED_SYSTEM_ADMIN_PASSWORD` set.
 - `pnpm --filter api prisma migrate deploy && pnpm --filter api prisma db seed` has run once (creates the first `SYSTEM_ADMIN`, per `research.md` #2).
-- `LogSmsAdapter` active (non-production), so OTP codes land in the API's debug log instead of a real SMS.
+- `LogSmsAdapter` active (non-production), so OTP codes land in the API's debug log instead of a real SMS — this requires `LOG_LEVEL=debug` (the `.env`/`.env.example` default is `info`, which silently drops the line that carries the code).
 - A shell with `curl` and `jq`. `API=http://localhost:3000/api/v1`.
 
 ## 1. System Admin provisions a company and its first Company Admin (User Story 1)
@@ -113,7 +113,7 @@ Forgot-password end to end (Scenario 4.3–4.6), for the Manager created in step
 ```sh
 curl -s -X POST "$API/auth/forgot-password" -H 'Content-Type: application/json' \
   -d '{"username":"vijay.manager"}' | jq
-# expect { "maskedMobile": "+91•••••••22222" } (shape only — check the running log for the dev OTP code)
+# expect { "maskedMobile": "+91•••••••222" } (shape only, per contracts/auth.md's own example — check the running log for the dev OTP code)
 
 RESET_TOKEN=$(curl -s -X POST "$API/auth/verify-otp" -H 'Content-Type: application/json' \
   -d '{"username":"vijay.manager","code":"<code from the debug log>"}' | jq -r .resetToken)

@@ -22,6 +22,7 @@ import {
 } from '@field-sales/shared';
 
 import { ApiError, apiRequest, generateIdempotencyKey } from '../../api/client';
+import { PasswordInput } from '../../components/PasswordInput';
 import type { AdminStackParamList } from '../../navigation/RootNavigator';
 
 /**
@@ -389,13 +390,9 @@ export function UserFormScreen() {
             control={control}
             name="temporaryPassword"
             render={({ field: { onBlur, onChange, value } }) => (
-              <TextInput
-                autoCapitalize="none"
-                autoCorrect={false}
-                className="rounded-md border border-gray-300 px-3 py-2 text-base text-gray-900"
+              <PasswordInput
                 onBlur={onBlur}
                 onChangeText={onChange}
-                secureTextEntry
                 testID="user-form-temporary-password"
                 value={value}
               />
