@@ -25,7 +25,7 @@
 | WU-07 (remainder) | T040 | #40 | **COMPLETE** | COMMITTED (4f1b818, PR #75) | 4 (4 legitimate FAILs across 5 review rounds, all fixed — see below; rounds 4-5 were explicit user-approved exceptions to the normal 3-retry limit) |
 | US3 | T053-T061 | #53-#61 | **COMPLETE** | COMMITTED (e84112c, PR #75) | 0 (passed first adversarial review — plan itself took 4 rounds of plan-review-gate, see below) |
 | US4 | T062-T070 | #62-#70 | **COMPLETE** | COMMITTED (e4db23d, PR #75) | 0 (passed first adversarial review — plan itself took 4 rounds of plan-review-gate, see below) |
-| WU-08 (Phase 7 Polish) | T071-T074 | *(none — phase-polish, no GitHub issues)* | **COMPLETE** | COMMITTED (PR #75) | 0 (passed first adversarial review) |
+| WU-08 (Phase 7 Polish) | T071-T074 | #71-#74 (closed) | **COMPLETE** | COMMITTED (c3de574, PR #75) | 0 (passed first adversarial review) |
 
 ## Blocked / Escalated
 
