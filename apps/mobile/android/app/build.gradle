@@ -108,7 +108,7 @@ android {
             resValue "string", "app_name", "Field Sales (Dev)"
             buildConfigField "String", "COMPANY_CODE", '"DEV"'
             buildConfigField "String", "COMPANY_NAME", '"Field Sales (Dev)"'
-            buildConfigField "String", "API_URL", '"http://localhost:3000"'
+            buildConfigField "String", "API_URL", '"http://localhost:3000/api/v1"'
             buildConfigField "String", "GOOGLE_MAPS_API_KEY", '""'
         }
         srt {
@@ -118,7 +118,7 @@ android {
             buildConfigField "String", "COMPANY_CODE", '"SRT"'
             buildConfigField "String", "COMPANY_NAME", '"Sri Ramana Traders"'
             // Placeholders until the pilot company has a real staging/production API and key.
-            buildConfigField "String", "API_URL", '"https://api-staging.example.com"'
+            buildConfigField "String", "API_URL", '"https://api-staging.example.com/api/v1"'
             buildConfigField "String", "GOOGLE_MAPS_API_KEY", '""'
         }
     }

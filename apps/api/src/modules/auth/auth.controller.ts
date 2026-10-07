@@ -6,6 +6,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { createZodDto } from 'nestjs-zod';
 import {
   AppError,
@@ -45,6 +46,7 @@ class ChangePasswordDto extends createZodDto(changePasswordSchema) {}
  * `throttler.config.ts`'s own note that it already matches both the bare
  * and a future `/api/v1`-prefixed form).
  */
+@ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}

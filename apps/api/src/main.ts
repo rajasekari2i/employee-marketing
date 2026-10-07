@@ -87,6 +87,14 @@ async function bootstrap() {
   app.useBodyParser('json', { limit: JSON_BODY_LIMIT });
   app.useBodyParser('urlencoded', { limit: JSON_BODY_LIMIT, extended: true });
 
+  // Architecture D-15 ("REST, `/api/v1`, cursor pagination...") and every
+  // contracts/*.md base-path declaration (e.g. "Base path `/api/v1/auth`")
+  // require this prefix — it was never actually wired in despite
+  // throttler.config.ts's `isAuthRoute` already anticipating it (see that
+  // file's own comment). Applies to every route, `@Public()` included —
+  // this only changes where a route is mounted, not who can reach it.
+  app.setGlobalPrefix('api/v1');
+
   const port = Number(process.env.PORT ?? 3000);
   await app.listen(port);
 

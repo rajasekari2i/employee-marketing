@@ -11,6 +11,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { AppError } from '@field-sales/shared';
 
@@ -48,6 +49,7 @@ const AVATAR_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
  * and `RolesGuard` returns `true` unconditionally for any handler/class
  * with no `@Roles()` metadata).
  */
+@ApiTags('files')
 @Controller('files')
 @UseGuards(RolesGuard)
 export class FilesController {
