@@ -106,7 +106,7 @@ android {
             dimension "company"
             applicationIdSuffix ".dev"
             resValue "string", "app_name", "Field Sales (Dev)"
-            buildConfigField "String", "COMPANY_CODE", '"DEV"'
+            buildConfigField "String", "COMPANY_CODE", '"SRK"'
             buildConfigField "String", "COMPANY_NAME", '"Field Sales (Dev)"'
             buildConfigField "String", "API_URL", '"http://localhost:3000/api/v1"'
             buildConfigField "String", "GOOGLE_MAPS_API_KEY", '""'
