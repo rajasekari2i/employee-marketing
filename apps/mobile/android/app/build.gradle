@@ -91,7 +91,7 @@ android {
     }
 
     // BuildConfig generation is off by default on current AGP; we rely on it below to carry
-    // each company's COMPANY_CODE/COMPANY_NAME/API_URL/GOOGLE_MAPS_API_KEY to JS (via
+    // each company's APP_NAME/COMPANY_CODE/COMPANY_NAME/API_URL/GOOGLE_MAPS_API_KEY to JS (via
     // react-native-config, which reads these BuildConfig fields by reflection).
     buildFeatures {
         buildConfig true
@@ -99,27 +99,17 @@ android {
 
     // One build per company (Architecture §16.1, D-08): no Expo/EAS profiles, per-company
     // identity instead comes from a native Android product flavor per company. Adding a new
-    // customer is a new flavor block here, not a JS code change.
+    // customer is a new flavor block here plus a ".env.<flavor>" file (see dotenv.gradle
+    // wiring below), not a JS code change.
     flavorDimensions = ["company"]
     productFlavors {
         dev {
             dimension "company"
             applicationIdSuffix ".dev"
-            resValue "string", "app_name", "Field Sales (Dev)"
-            buildConfigField "String", "COMPANY_CODE", '"SRK"'
-            buildConfigField "String", "COMPANY_NAME", '"Field Sales (Dev)"'
-            buildConfigField "String", "API_URL", '"http://localhost:3000/api/v1"'
-            buildConfigField "String", "GOOGLE_MAPS_API_KEY", '""'
         }
         srt {
             dimension "company"
             applicationIdSuffix ".srt"
-            resValue "string", "app_name", "Sri Ramana Traders"
-            buildConfigField "String", "COMPANY_CODE", '"SRT"'
-            buildConfigField "String", "COMPANY_NAME", '"Sri Ramana Traders"'
-            // Placeholders until the pilot company has a real staging/production API and key.
-            buildConfigField "String", "API_URL", '"https://api-staging.example.com/api/v1"'
-            buildConfigField "String", "GOOGLE_MAPS_API_KEY", '""'
         }
     }
 
@@ -144,6 +134,20 @@ android {
         }
     }
 }
+
+// Per-company config (APP_NAME, COMPANY_CODE, COMPANY_NAME, API_URL,
+// GOOGLE_MAPS_API_KEY) lives in ".env.<flavor>" (apps/mobile root, gitignored —
+// see .env.example), not hardcoded here. react-native-config's dotenv.gradle
+// reads the file matching the product flavor in the Gradle task name (e.g.
+// "assembleSrtDebug" -> ".env.srt") and turns every key into both a
+// BuildConfig field (read by src/config.ts via react-native-config) and an
+// Android resValue of the same name (APP_NAME backs android:label in
+// AndroidManifest.xml).
+project.ext.envConfigFiles = [
+    dev: ".env.dev",
+    srt: ".env.srt",
+]
+apply from: project(':react-native-config').projectDir.getPath() + "/dotenv.gradle"
 
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin

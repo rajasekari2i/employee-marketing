@@ -9,6 +9,7 @@ import {
   Text,
   TextInput,
   View,
+  type TextStyle,
 } from 'react-native';
 import {
   loginSchema,
@@ -19,7 +20,7 @@ import {
 import { ApiError, apiRequest } from '../../api/client';
 import { AppLogo } from '../../components/AppLogo';
 import { PasswordInput } from '../../components/PasswordInput';
-import { COMPANY_CODE } from '../../config';
+import { COMPANY_CODE, COMPANY_NAME } from '../../config';
 import { setSession } from '../../lib/secureSession';
 import type { AuthStackParamList } from '../../navigation/RootNavigator';
 
@@ -33,7 +34,34 @@ import type { AuthStackParamList } from '../../navigation/RootNavigator';
  * rule 5 — "one contract"). This mobile build never logs in a SYSTEM_ADMIN
  * (CLAUDE.md: "System Admin ... no mobile screens"), so there is no case
  * here that needs to omit `companyCode`.
+ *
+ * Layout/colors below are taken verbatim from
+ * `docs/ui-design/Field_Sales_Beat_App.html` §1.1 ("1.1 Sign in (all
+ * users)") rather than the shared NativeWind/Tailwind scale, since most of
+ * its hex values (background, border, label, heading) aren't on that
+ * scale. `brand-600`/`brand-700` (packages/config/tailwind-preset.js) do
+ * already equal the design's #1D4ED8/#1E40AF, so those two keep using the
+ * shared tokens.
  */
+
+const INPUT_STYLE: TextStyle = {
+  height: 52,
+  borderWidth: 1.5,
+  borderColor: '#CBD2DD',
+  borderRadius: 12,
+  paddingHorizontal: 14,
+  fontSize: 16,
+  fontWeight: '500',
+  color: '#141A26',
+  backgroundColor: '#FFFFFF',
+};
+
+const LABEL_STYLE: TextStyle = {
+  fontSize: 13,
+  fontWeight: '600',
+  color: '#3A4353',
+  marginBottom: 6,
+};
 
 interface LoginSuccessResponse {
   accessToken: string;
@@ -107,81 +135,111 @@ export function SignInScreen() {
   });
 
   return (
-    <View className="flex-1 items-center justify-center bg-white px-6">
-      <AppLogo size={96} style={{ marginBottom: 32 }} />
-      <Text className="mb-6 text-xl font-semibold text-brand-700">Sign in</Text>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: '#F3F5F9',
+        paddingTop: 104,
+        paddingHorizontal: 24,
+        paddingBottom: 32,
+        gap: 40,
+      }}
+    >
+      <View style={{ alignItems: 'center', gap: 14 }}>
+        <AppLogo size={128} />
+        <Text style={{ fontSize: 24, fontWeight: '700', color: '#141A26' }}>
+          {COMPANY_NAME}
+        </Text>
+      </View>
 
-      <View className="w-full max-w-sm">
-        <Text className="mb-1 text-sm text-gray-600">Username</Text>
-        <Controller
-          control={control}
-          name="username"
-          render={({ field: { onBlur, onChange, value } }) => (
-            <TextInput
-              autoCapitalize="none"
-              autoCorrect={false}
-              className="rounded-md border border-gray-300 px-3 py-2 text-base text-gray-900"
-              editable={!isSubmitting}
-              onBlur={onBlur}
-              onChangeText={onChange}
-              testID="sign-in-username"
-              value={value}
-            />
-          )}
-        />
-        {errors.username ? (
-          <Text className="mt-1 text-xs text-red-600">
-            {errors.username.message}
-          </Text>
-        ) : null}
+      <View style={{ gap: 18 }}>
+        <View>
+          <Text style={LABEL_STYLE}>Username</Text>
+          <Controller
+            control={control}
+            name="username"
+            render={({ field: { onBlur, onChange, value } }) => (
+              <TextInput
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!isSubmitting}
+                onBlur={onBlur}
+                onChangeText={onChange}
+                style={INPUT_STYLE}
+                testID="sign-in-username"
+                value={value}
+              />
+            )}
+          />
+          {errors.username ? (
+            <Text style={{ marginTop: 4, fontSize: 12, color: '#DC2626' }}>
+              {errors.username.message}
+            </Text>
+          ) : null}
+        </View>
 
-        <Text className="mb-1 mt-4 text-sm text-gray-600">Password</Text>
-        <Controller
-          control={control}
-          name="password"
-          render={({ field: { onBlur, onChange, value } }) => (
-            <PasswordInput
-              editable={!isSubmitting}
-              onBlur={onBlur}
-              onChangeText={onChange}
-              testID="sign-in-password"
-              value={value}
-            />
-          )}
-        />
-        {errors.password ? (
-          <Text className="mt-1 text-xs text-red-600">
-            {errors.password.message}
-          </Text>
-        ) : null}
+        <View>
+          <Text style={LABEL_STYLE}>Password</Text>
+          <Controller
+            control={control}
+            name="password"
+            render={({ field: { onBlur, onChange, value } }) => (
+              <PasswordInput
+                editable={!isSubmitting}
+                onBlur={onBlur}
+                onChangeText={onChange}
+                testID="sign-in-password"
+                value={value}
+              />
+            )}
+          />
+          {errors.password ? (
+            <Text style={{ marginTop: 4, fontSize: 12, color: '#DC2626' }}>
+              {errors.password.message}
+            </Text>
+          ) : null}
+        </View>
 
         {submitError ? (
-          <Text className="mt-4 text-sm text-red-600" testID="sign-in-error">
+          <Text
+            style={{ fontSize: 14, color: '#DC2626' }}
+            testID="sign-in-error"
+          >
             {submitError}
           </Text>
         ) : null}
 
         <Pressable
-          className="mt-6 items-center rounded-md bg-brand-600 py-3"
+          android_ripple={{ color: '#1E40AF' }}
           disabled={isSubmitting}
           onPress={() => {
             void onSubmit();
+          }}
+          style={{
+            marginTop: 8,
+            height: 54,
+            borderRadius: 14,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#1D4ED8',
           }}
           testID="sign-in-submit"
         >
           {isSubmitting ? (
             <ActivityIndicator color="#ffffff" />
           ) : (
-            <Text className="font-semibold text-white">Sign in</Text>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: '#fff' }}>
+              Sign in
+            </Text>
           )}
         </Pressable>
 
         <Pressable
-          className="mt-4 items-center py-2"
           onPress={() => navigation.navigate('ForgotPassword')}
+          style={{ alignSelf: 'center', padding: 10 }}
           testID="sign-in-forgot-password"
         >
-          <Text className="text-sm font-medium text-brand-700">
+          <Text style={{ fontSize: 14, fontWeight: '600', color: '#1D4ED8' }}>
             Forgot password?
           </Text>
         </Pressable>

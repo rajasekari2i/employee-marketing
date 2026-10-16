@@ -11,7 +11,6 @@ import { ClsService } from 'nestjs-cls';
 
 import * as password from '../../infra/security/password';
 import type { TransactionClsStore } from '../../common/interceptors/transaction.interceptor';
-import { seedCompanyRoles } from '../roles/roles.seed';
 
 /**
  * Own module-level, unextended Prisma client — same established pattern as
@@ -76,10 +75,11 @@ export class CompaniesService {
    * as `409 COMPANY_CODE_TAKEN` — FR-001/FR-003), its `CompanySettings` row
    * (architecture defaults — every field but `companyId` is `@default(...)`
    * in `schema.prisma`, so a bare `{ companyId }` create picks all of them
-   * up automatically), the four tenant-scoped `Role`s (via
-   * `roles.seed.ts`), and the first `User` with `role.key = COMPANY_ADMIN`
+   * up automatically), and the first `User` with `role.key = COMPANY_ADMIN`
    * from the request's nested `admin` object (FR-002), password hashed via
-   * `password.ts` (WU-05).
+   * `password.ts` (WU-05). `Role` is application-wide, not per-company
+   * (`roles.seed.ts`) — this only looks the `COMPANY_ADMIN` row up, it
+   * never creates one.
    */
   async create(input: CreateCompanyInput): Promise<CreateCompanyResult> {
     const tx = this.tx();
@@ -107,16 +107,16 @@ export class CompaniesService {
 
     await tx.companySettings.create({ data: { companyId: company.id } });
 
-    const roles = await seedCompanyRoles(tx, company.id);
-    const companyAdminRole = roles.find(
-      (role) => role.key === RoleKey.COMPANY_ADMIN,
-    );
+    const companyAdminRole = await tx.role.findUnique({
+      where: { key: RoleKey.COMPANY_ADMIN },
+    });
     if (!companyAdminRole) {
-      // Defensive only — seedCompanyRoles() always inserts all four
-      // COMPANY_ROLE_DEFINITIONS, COMPANY_ADMIN among them; this can only
-      // happen if that list is edited to drop it.
+      // Defensive only — prisma/seed.ts's ensureGlobalRoles() runs as part
+      // of every deploy and always creates all four ROLE_DEFINITIONS,
+      // COMPANY_ADMIN among them; this can only happen if that seed step
+      // was never run against this database.
       throw new Error(
-        'roles.seed.ts did not seed a COMPANY_ADMIN role for the new company.',
+        'Global Role rows are missing — run `prisma db seed` against this database first.',
       );
     }
 

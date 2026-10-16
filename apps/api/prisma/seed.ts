@@ -1,10 +1,13 @@
 /**
  * One-time, idempotent deploy-time bootstrap (research.md #2 / WU-05 DoD
  * item 6). Ensures exactly one platform-wide `Role` row
- * (`key: SYSTEM_ADMIN`, `companyId: null`) exists, then ensures exactly
- * one `User` row with that role, built from `SEED_SYSTEM_ADMIN_USERNAME`/
- * `SEED_SYSTEM_ADMIN_PASSWORD`. Safe to re-run on every deploy/restart —
- * never duplicates either row.
+ * (`key: SYSTEM_ADMIN`) exists, then ensures exactly one `User` row with
+ * that role, built from `SEED_SYSTEM_ADMIN_USERNAME`/
+ * `SEED_SYSTEM_ADMIN_PASSWORD`. Also ensures the four non-`SYSTEM_ADMIN`
+ * `Role` rows exist (`roles.seed.ts`'s `ensureGlobalRoles()`) — `Role` is
+ * application-wide, not per-company, so this is the one place all five
+ * roles get created, ever. Safe to re-run on every deploy/restart — never
+ * duplicates any row.
  *
  * ---------------------------------------------------------------------
  * MUST be run against the superuser connection, never the live API's
@@ -43,6 +46,7 @@ import { PrismaClient } from '@prisma/client';
 import { loadEnv } from '@field-sales/shared';
 
 import { hash } from '../src/infra/security/password';
+import { ensureGlobalRoles } from '../src/modules/roles/roles.seed';
 
 const prisma = new PrismaClient();
 
@@ -71,18 +75,11 @@ const SYSTEM_ADMIN_PERMISSIONS = [
 ];
 
 async function ensureSystemAdminRole(): Promise<{ id: string }> {
-  // Deliberately NOT `prisma.role.upsert()` keyed on the `@@unique([companyId,
-  // key])` compound index: Prisma's generated `RoleCompanyIdKeyCompoundUniqueInput`
-  // types `companyId` as a non-nullable `string` (a known Prisma limitation
-  // with nullable fields inside a compound unique index), so `{ companyId:
-  // null, key: 'SYSTEM_ADMIN' }` is not even expressible as a `where` there —
-  // and, separately, Postgres itself would never have enforced this
-  // constraint across multiple `companyId IS NULL` rows anyway (`NULL <>
-  // NULL` in a unique index, so two such rows could coexist). A plain
-  // find-then-create is therefore not a workaround but the actually-correct
-  // idempotency check for this one row.
-  const existing = await prisma.role.findFirst({
-    where: { companyId: null, key: 'SYSTEM_ADMIN' },
+  // Find-then-create, not `prisma.role.upsert()` — same reasoning as
+  // `roles.seed.ts`'s `ensureGlobalRoles()`: a re-run must never overwrite
+  // permissions hand-edited after the first deploy.
+  const existing = await prisma.role.findUnique({
+    where: { key: 'SYSTEM_ADMIN' },
   });
   if (existing) {
     return existing;
@@ -91,7 +88,6 @@ async function ensureSystemAdminRole(): Promise<{ id: string }> {
   return prisma.role.create({
     data: {
       key: 'SYSTEM_ADMIN',
-      companyId: null,
       label: SYSTEM_ADMIN_ROLE_LABEL,
       permissions: SYSTEM_ADMIN_PERMISSIONS,
       isSystem: true,
@@ -160,6 +156,7 @@ async function main(): Promise<void> {
     env.SEED_SYSTEM_ADMIN_USERNAME,
     env.SEED_SYSTEM_ADMIN_PASSWORD,
   );
+  await ensureGlobalRoles(prisma);
 }
 
 main()

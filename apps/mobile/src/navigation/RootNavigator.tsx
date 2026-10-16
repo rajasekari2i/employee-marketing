@@ -63,7 +63,9 @@ export interface UserSummaryForEdit {
   role: RoleKey;
   status: UserStatus;
   username: string | null;
+  monthlySalary: string | null;
   halfDayRate: string | null;
+  rateEffectiveFrom: string | null;
   photoUrl: string | null;
 }
 
@@ -122,12 +124,12 @@ function AdminNavigator() {
       <AdminStack.Screen
         name="Home"
         component={HomeScreen}
-        options={{ title: 'Home' }}
+        options={{ headerShown: false }}
       />
       <AdminStack.Screen
         name="Profile"
         component={ProfileScreen}
-        options={{ title: 'Profile' }}
+        options={{ headerShown: false }}
       />
       <AdminStack.Screen
         name="ChangePassword"
@@ -137,14 +139,12 @@ function AdminNavigator() {
       <AdminStack.Screen
         name="UsersList"
         component={UsersListScreen}
-        options={{ title: 'Users' }}
+        options={{ headerShown: false }}
       />
       <AdminStack.Screen
         name="UserForm"
         component={UserFormScreen}
-        options={({ route }) => ({
-          title: route.params?.user ? 'Edit user' : 'Add user',
-        })}
+        options={{ headerShown: false }}
       />
     </AdminStack.Navigator>
   );

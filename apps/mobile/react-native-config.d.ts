@@ -5,6 +5,7 @@ declare module 'react-native-config' {
    * `android/app/build.gradle` — the bare-RN replacement for Expo's `expo-constants`.
    */
   export interface NativeConfig {
+    APP_NAME?: string;
     COMPANY_CODE?: string;
     COMPANY_NAME?: string;
     API_URL?: string;

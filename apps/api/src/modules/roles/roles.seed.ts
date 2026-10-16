@@ -2,11 +2,13 @@ import { PrismaClient } from '@prisma/client';
 import { RoleKey } from '@field-sales/shared';
 
 /**
- * User Story 1 DoD item 2 (specs/001-company-user-auth/orchestration-plan
- * .md): given a brand-new `companyId`, inserts that company's four
- * tenant-scoped `Role` rows. Does NOT touch the platform-wide
- * `SYSTEM_ADMIN` role — that one row (`companyId: null`) is seeded once by
- * `prisma/seed.ts` (WU-05) and is never re-created or modified here.
+ * The four non-`SYSTEM_ADMIN` `Role` rows, application-wide (one per `key`,
+ * shared by every company — `Role` has no `companyId` at all; see
+ * `prisma/schema.prisma`'s comment on the model). Seeded once, idempotently,
+ * by `prisma/seed.ts` (the same deploy-time bootstrap that creates
+ * `SYSTEM_ADMIN`) — not per company. `companies.service.ts`'s `create()`
+ * looks these up by `key` for the new company's first admin; it does not
+ * create them.
  *
  * Permission strings follow Architecture §6's `resource:action:scope`
  * format (scopes: `own | team | company | platform`), translated from PRD
@@ -28,13 +30,13 @@ import { RoleKey } from '@field-sales/shared';
  *     exist only to describe what it is a *subject* of (attendance, salary
  *     runs), not anything it can call itself.
  */
-export interface CompanyRoleDefinition {
+export interface RoleDefinition {
   key: Exclude<RoleKey, 'SYSTEM_ADMIN'>;
   label: string;
   permissions: string[];
 }
 
-export const COMPANY_ROLE_DEFINITIONS: readonly CompanyRoleDefinition[] = [
+export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
   {
     key: RoleKey.COMPANY_ADMIN,
     label: 'Company Admin',
@@ -135,47 +137,29 @@ export const COMPANY_ROLE_DEFINITIONS: readonly CompanyRoleDefinition[] = [
 /** The subset of a Prisma (transaction) client this helper needs. */
 export type RoleSeedingClient = Pick<PrismaClient, 'role'>;
 
-export interface SeededRole {
-  id: string;
-  key: Exclude<RoleKey, 'SYSTEM_ADMIN'>;
-}
-
 /**
- * Inserts the four `COMPANY_ROLE_DEFINITIONS` rows for `companyId`, inside
- * whatever transaction/client the caller passes in (`companies.service.ts`
- * calls this inside the same transaction that creates the `Company` row,
- * per DoD item 3 — one atomic insert for company + settings + roles +
- * first admin).
- *
- * `Role` is not one of `tenant.extension.ts`'s `TENANT_MODELS` (Architecture
- * §5's documented exemption list), so no RLS/CLS tenant-context dance is
- * needed here — a plain `create` per row with an explicit `companyId` is
- * correct and sufficient.
- *
- * Returns the created rows (id + key) so the caller can look up
- * `COMPANY_ADMIN`'s id without a second round-trip query.
+ * Ensures all four `ROLE_DEFINITIONS` rows exist (find-or-create per `key`,
+ * same idempotent posture as `prisma/seed.ts`'s `ensureSystemAdminRole()` —
+ * safe to re-run on every deploy/restart). Called once from `prisma/seed.ts`;
+ * `companies.service.ts` only reads these rows, never creates them.
  */
-export async function seedCompanyRoles(
+export async function ensureGlobalRoles(
   client: RoleSeedingClient,
-  companyId: string,
-): Promise<SeededRole[]> {
-  const created: SeededRole[] = [];
-
-  for (const definition of COMPANY_ROLE_DEFINITIONS) {
-    const role = await client.role.create({
+): Promise<void> {
+  for (const definition of ROLE_DEFINITIONS) {
+    const existing = await client.role.findUnique({
+      where: { key: definition.key },
+    });
+    if (existing) {
+      continue;
+    }
+    await client.role.create({
       data: {
         key: definition.key,
-        companyId,
         label: definition.label,
         permissions: definition.permissions,
         isSystem: true,
       },
     });
-    created.push({
-      id: role.id,
-      key: role.key as CompanyRoleDefinition['key'],
-    });
   }
-
-  return created;
 }

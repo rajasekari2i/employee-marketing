@@ -55,7 +55,6 @@ model Company {
   updatedAt    DateTime      @updatedAt @map("updated_at")
 
   settings CompanySettings?
-  roles    Role[]
   users    User[]
 
   @@map("companies")
@@ -89,18 +88,17 @@ model CompanySettings {
 // Role (T010)
 // ---------------------------------------------------------------------------
 
+// Application-wide: exactly one row per `key`, shared by every company —
+// not a per-company table (see roles.seed.ts).
 model Role {
   id          String   @id @default(uuid())
-  key         RoleKey
-  companyId   String?  @map("company_id")
+  key         RoleKey  @unique
   label       String
   permissions String[]
   isSystem    Boolean  @default(true) @map("is_system")
 
-  company Company? @relation(fields: [companyId], references: [id])
-  users   User[]
+  users User[]
 
-  @@unique([companyId, key])
   @@map("roles")
 }
 

@@ -35,7 +35,7 @@ export interface MeResult {
   status: UserStatus;
   photoUrl: string | null;
   permissions: string[];
-  company: { name: string; timezone: string } | null;
+  company: { code: string; name: string; timezone: string } | null;
 }
 
 /** The subset of a looked-up `User` row (+ role/company) this endpoint needs. */
@@ -48,7 +48,7 @@ interface MeRow {
   status: string;
   photoId: string | null;
   role: { key: RoleKey; permissions: string[] };
-  company: { name: string; timezone: string } | null;
+  company: { code: string; name: string; timezone: string } | null;
 }
 
 /**
@@ -90,7 +90,7 @@ export class MeService {
           status: true,
           photoId: true,
           role: { select: { key: true, permissions: true } },
-          company: { select: { name: true, timezone: true } },
+          company: { select: { code: true, name: true, timezone: true } },
         },
       });
     });

@@ -1,0 +1,11 @@
+<resources>
+    <!-- Brand palette (packages/config/tailwind-preset.js's "brand" scale /
+         src/features/admin/adminDesign.ts's BLUE) — the single source every
+         design board in docs/ui-design/Field_Sales_Beat_App.html uses for
+         its primary blue. Referenced by AppTheme's colorPrimary/colorAccent
+         below so native OS widgets (DatePickerDialog, TimePickerDialog, any
+         other AppCompat/Material system dialog) pick up the same blue
+         instead of AppCompat's default teal. -->
+    <color name="brand_600">#1D4ED8</color>
+    <color name="brand_700">#1E40AF</color>
+</resources>

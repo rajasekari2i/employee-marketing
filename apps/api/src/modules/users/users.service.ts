@@ -40,7 +40,10 @@ export interface UserListItem {
   status: UserStatus;
   username: string | null;
   email: string | null;
+  monthlySalary: string | null;
   halfDayRate: string | null;
+  /** The current (open-ended) `UserSalaryRate` row's `effectiveFrom`, `YYYY-MM-DD` — `null` iff `halfDayRate` is. */
+  rateEffectiveFrom: string | null;
   photoUrl: string | null;
 }
 
@@ -57,6 +60,7 @@ interface UserRow {
   username: string | null;
   status: string;
   photoId: string | null;
+  monthlySalary: { toString(): string } | null;
   role: { key: RoleKeyType };
 }
 
@@ -147,6 +151,7 @@ export class UsersService {
         username: true,
         status: true,
         photoId: true,
+        monthlySalary: true,
         role: { select: { key: true } },
       },
     });
@@ -180,15 +185,14 @@ export class UsersService {
     const tx = await this.scopeToCaller(companyId);
 
     const role = await tx.role.findUnique({
-      where: { companyId_key: { companyId, key: input.role } },
+      where: { key: input.role },
     });
     if (!role) {
-      // Defensive only — every company's four tenant roles are seeded the
-      // moment the company is created (roles.seed.ts, User Story 1); this
-      // can only happen if that seeding step is ever edited to drop one of
-      // the four keys `createUserSchema`'s `role` field restricts to.
+      // Defensive only — `Role` is application-wide (roles.seed.ts),
+      // seeded once by prisma/seed.ts's ensureGlobalRoles(); this can only
+      // happen if that seed step was never run against this database.
       throw new Error(
-        `Role "${input.role}" is not seeded for company "${companyId}".`,
+        `Role "${input.role}" is not seeded — run \`prisma db seed\` against this database first.`,
       );
     }
 
@@ -257,6 +261,7 @@ export class UsersService {
         username: user.username,
         status: user.status,
         photoId: user.photoId,
+        monthlySalary: user.monthlySalary,
         role: { key: role.key },
       },
       false,
@@ -308,6 +313,7 @@ export class UsersService {
         username: true,
         status: true,
         photoId: true,
+        monthlySalary: true,
         role: { select: { key: true } },
       },
     });
@@ -344,6 +350,7 @@ export class UsersService {
         username: true,
         status: true,
         photoId: true,
+        monthlySalary: true,
         role: { select: { key: true } },
       },
     });
@@ -412,15 +419,21 @@ export class UsersService {
     return new Date(`${value}T00:00:00.000Z`);
   }
 
-  /** The current (open-ended) `UserSalaryRate` row's rate, as a decimal string, or `null` if the user has none (contracts/users.md). */
-  private async currentHalfDayRate(
+  /** The current (open-ended) `UserSalaryRate` row's rate + its `effectiveFrom` (as a `YYYY-MM-DD` string), or both `null` if the user has none (contracts/users.md). */
+  private async currentSalaryRate(
     tx: UsersTx,
     userId: string,
-  ): Promise<string | null> {
+  ): Promise<{ halfDayRate: string | null; rateEffectiveFrom: string | null }> {
     const row = await tx.userSalaryRate.findFirst({
       where: { userId, effectiveTo: null },
     });
-    return row ? row.halfDayRate.toString() : null;
+    if (!row) {
+      return { halfDayRate: null, rateEffectiveFrom: null };
+    }
+    return {
+      halfDayRate: row.halfDayRate.toString(),
+      rateEffectiveFrom: row.effectiveFrom.toISOString().slice(0, 10),
+    };
   }
 
   private async toListItem(
@@ -430,7 +443,10 @@ export class UsersService {
     row: UserRow,
     thumb: boolean,
   ): Promise<UserListItem> {
-    const halfDayRate = await this.currentHalfDayRate(tx, row.id);
+    const { halfDayRate, rateEffectiveFrom } = await this.currentSalaryRate(
+      tx,
+      row.id,
+    );
     return {
       id: row.id,
       name: row.name,
@@ -438,7 +454,9 @@ export class UsersService {
       status: row.status as UserStatus,
       username: row.username,
       email: row.email,
+      monthlySalary: row.monthlySalary ? row.monthlySalary.toString() : null,
       halfDayRate,
+      rateEffectiveFrom,
       photoUrl: row.photoId
         ? this.filesService.signFileUrl(row.photoId, viewerId, companyId, thumb)
         : null,

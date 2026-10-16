@@ -26,16 +26,21 @@ Created automatically alongside `Company` with architecture's documented default
 
 ## Role
 
-Seeded, not user-editable in this slice.
+Seeded, not user-editable in this slice. Application-wide — not one row per company. Every
+company's users share the same five rows (`roles.seed.ts`'s `ensureGlobalRoles()`, called once
+from `prisma/seed.ts` alongside `SYSTEM_ADMIN`, not from `POST /companies`). An earlier revision
+of this slice gave each company its own duplicate copy of the four non-`SYSTEM_ADMIN` roles
+(anticipating a future per-company custom-role feature); that was reverted — no release-1 code
+ever diverges one company's role definitions from another's, so the duplication had no benefit.
 
 | Field | Type | Notes |
 |---|---|---|
 | `id` | uuid | |
 | `key` | `SYSTEM_ADMIN` \| `COMPANY_ADMIN` \| `MANAGER` \| `MARKETING_EXECUTIVE` \| `EMPLOYEE` | |
-| `companyId` | uuid? | `null` = platform-wide seeded role, used by every company until a company-custom role exists (none in release 1) |
 | `permissions` | string[] | `resource:action:scope` strings, seeded from the matrix in PRD §3 |
 
-**Validation**: exactly one `Role` row per `(companyId, key)` pair (`@@unique`). A company's five roles are seeded the moment the company is created, so `POST /companies` also inserts them.
+**Validation**: exactly one `Role` row per `key` (`@@unique`). `POST /companies` looks the
+`COMPANY_ADMIN` row up for the new company's first admin; it does not create any `Role` row.
 
 ## User
 
@@ -124,9 +129,8 @@ Every `User` creation, role assignment, status change and salary-rate change wri
 
 ```
 Company 1───1 CompanySettings
-Company 1───* Role (companyId null = platform-wide, shared by all companies)
 Company 1───* User
-Role    1───* User
+Role    1───* User (Role is application-wide, not owned by any Company)
 User    1───* UserSalaryRate
 User    1───* RefreshToken (grouped by familyId)
 User    1───* OtpChallenge

@@ -1,3 +1,6 @@
 <resources>
-    <string name="app_name">Sri Ramana Traders</string>
+    <!-- Fallback only for a Gradle invocation that runs with no flavor in its task name
+         (so dotenv.gradle can't pick a .env.<flavor> file); every real build/run task
+         overrides this from APP_NAME in .env.dev / .env.srt (see app/build.gradle). -->
+    <string name="APP_NAME">Field Sales</string>
 </resources>

@@ -11,7 +11,7 @@ Base path `/api/v1/me`. Any authenticated role.
   role: RoleKey; companyId: string | null; status: UserStatus;
   photoUrl: string | null;
   permissions: string[];
-  company: { name: string; timezone: string } | null;   // null only for SYSTEM_ADMIN
+  company: { code: string; name: string; timezone: string } | null;   // null only for SYSTEM_ADMIN
 }
 ```
 `name` and `email` are returned but are **read-only** from every mutation endpoint available to the user themself (FR-021) — only a Company Admin can change them, via `PATCH /users/:id`.

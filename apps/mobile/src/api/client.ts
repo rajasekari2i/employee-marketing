@@ -205,6 +205,21 @@ export function generateIdempotencyKey(): string {
 }
 
 /**
+ * Every signed file URL the API returns (`GET /me`'s `photoUrl`, `PATCH
+ * /me/photo`'s response, `files.md`'s generic upload) is relative to the
+ * API's own *origin*, not `API_URL` — see
+ * `apps/api/src/modules/files/files.service.ts`'s `signFileUrl()` comment.
+ * `API_URL` already carries the `/api/v1` path suffix those paths also
+ * start with, so this strips that suffix before prefixing, rather than
+ * naively concatenating (which would double it:
+ * `.../api/v1/api/v1/files/...`). Pass straight to `<Image source={{ uri }}>`.
+ */
+export function resolveFileUrl(path: string): string {
+  const origin = API_URL.replace(/\/api\/v1\/?$/, '');
+  return `${origin}${path}`;
+}
+
+/**
  * The one function every feature screen calls instead of bare `fetch`.
  * `path` is relative to `API_URL` (e.g. `"/me"`, `"/auth/login"`).
  */

@@ -308,15 +308,15 @@ model CompanySettings {
   updatedAt               DateTime @updatedAt
 }
 
+// Application-wide: one row per key, shared by every company (not a
+// per-company table).
 model Role {
   id          String   @id @default(uuid())
-  key         RoleKey
-  companyId   String?                            // null = platform-wide seeded role
+  key         RoleKey  @unique
   label       String
   permissions String[]
   isSystem    Boolean  @default(true)
   users       User[]
-  @@unique([companyId, key])
 }
 
 model User {

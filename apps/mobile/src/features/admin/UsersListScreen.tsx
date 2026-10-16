@@ -3,29 +3,37 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Pressable,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import {
-  TENANT_ASSIGNABLE_ROLE_KEYS,
-  type RoleKey,
-  type TenantAssignableRoleKey,
-  type UserStatus,
-} from '@field-sales/shared';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { RoleKey, UserStatus } from '@field-sales/shared';
 
-import { apiRequest, generateIdempotencyKey } from '../../api/client';
+import { apiRequest } from '../../api/client';
+import { AdminBottomNav } from '../../components/AdminBottomNav';
+import {
+  OutlineIcon,
+  type IconShape,
+} from '../../components/icons/OutlineIcon';
 import type { AdminStackParamList } from '../../navigation/RootNavigator';
+import { BG, BLUE, BORDER, INK, MUTED, ROLE_LABELS } from './adminDesign';
 
 /**
- * User Story 3 (specs/001-company-user-auth/orchestration-plan.md), DoD
- * item 9 / PRD §4 screen 4.10. Debounced search (name/username/email),
- * role + status filter chips, calling `GET /users`; each row shows
- * initials, role, half-day rate and status (FR-015). Also carries DoD item
- * 11 (Deactivate) — the row-level action reached from this same screen.
+ * PRD §4 screen 4.10 ("Users · list"). Layout/colors/icons below are taken
+ * verbatim from `docs/ui-design/Field_Sales_Beat_App.html` §4.10 — see that
+ * board for the source of every hex value and SVG path here.
+ *
+ * The design's one filter row is role only — "All" / "Executives" /
+ * "Managers" / "Employees" (no `COMPANY_ADMIN` chip; no separate status
+ * filter row) — so the previous implementation's extra status-filter row
+ * is dropped to match. Deactivating a user is still fully reachable, just
+ * relocated to match the design's own structure: tapping a row opens
+ * `UserFormScreen` (`UserForm.dc.html` in the design), which already has
+ * an Active/Inactive picker — there was never a dedicated "deactivate"
+ * control in this board, only in a past session's addition to this screen.
  */
 
 interface UserListItem {
@@ -35,7 +43,9 @@ interface UserListItem {
   status: UserStatus;
   username: string | null;
   email: string | null;
+  monthlySalary: string | null;
   halfDayRate: string | null;
+  rateEffectiveFrom: string | null;
   photoUrl: string | null;
 }
 
@@ -49,74 +59,53 @@ type UsersListNavigationProp = NativeStackNavigationProp<
   'UsersList'
 >;
 
-const ROLE_LABELS: Record<RoleKey, string> = {
-  SYSTEM_ADMIN: 'System Admin',
-  COMPANY_ADMIN: 'Company Admin',
-  MANAGER: 'Manager',
-  MARKETING_EXECUTIVE: 'Marketing Executive',
-  EMPLOYEE: 'Employee',
-};
-
-const ROLE_FILTER_OPTIONS: Array<TenantAssignableRoleKey | 'ALL'> = [
-  'ALL',
-  ...TENANT_ASSIGNABLE_ROLE_KEYS,
-];
-const STATUS_FILTER_OPTIONS: Array<UserStatus | 'ALL'> = [
-  'ALL',
-  'ACTIVE',
-  'INACTIVE',
+/** The design's 3 role chips, in order — `COMPANY_ADMIN` has no chip of its own. */
+const ROLE_FILTER_OPTIONS: Array<{ key: RoleKey; label: string }> = [
+  { key: 'MARKETING_EXECUTIVE', label: 'Executives' },
+  { key: 'MANAGER', label: 'Managers' },
+  { key: 'EMPLOYEE', label: 'Employees' },
 ];
 
-function initialFor(name: string): string {
-  const trimmed = name.trim();
-  return trimmed.length > 0 ? trimmed.charAt(0).toUpperCase() : '?';
+const ICON_BACK: IconShape[] = [{ d: 'M15 18l-6-6 6-6' }];
+const ICON_SEARCH: IconShape[] = [
+  { circle: [11, 11, 7] },
+  { d: 'M20 20l-4-4' },
+];
+const ICON_PLUS: IconShape[] = [{ d: 'M12 5v14M5 12h14' }];
+
+function initialsFor(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) {
+    return '?';
+  }
+  const first = words[0]?.charAt(0) ?? '';
+  const last =
+    words.length > 1 ? (words[words.length - 1]?.charAt(0) ?? '') : '';
+  return (first + last).toUpperCase();
 }
 
-function Chip({
-  label,
-  active,
-  onPress,
-  testID,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-  testID?: string;
-}) {
-  return (
-    <Pressable
-      className={
-        active
-          ? 'mr-2 rounded-full bg-brand-600 px-3 py-1'
-          : 'mr-2 rounded-full border border-gray-300 px-3 py-1'
-      }
-      onPress={onPress}
-      testID={testID}
-    >
-      <Text
-        className={
-          active ? 'text-xs font-medium text-white' : 'text-xs text-gray-700'
-        }
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
+/** Active: #E3EBFC/#1E3A8A (avatar + status chip + name); Inactive: #E9EDF3/#3A4353, dimmed name. */
+function statusColors(status: UserStatus) {
+  return status === 'ACTIVE'
+    ? { bg: '#E3EBFC', fg: '#1E3A8A', nameColor: INK }
+    : { bg: '#E9EDF3', fg: '#3A4353', nameColor: MUTED };
 }
 
 export function UsersListScreen() {
   const navigation = useNavigation<UsersListNavigationProp>();
+  const insets = useSafeAreaInsets();
 
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [roleFilter, setRoleFilter] = useState<TenantAssignableRoleKey | 'ALL'>(
-    'ALL',
-  );
-  const [statusFilter, setStatusFilter] = useState<UserStatus | 'ALL'>('ALL');
+  const [roleFilter, setRoleFilter] = useState<RoleKey | 'ALL'>('ALL');
 
   const [items, setItems] = useState<UserListItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [deactivatingId, setDeactivatingId] = useState<string | null>(null);
+
+  // Unfiltered — only for the header's "N active · N inactive" and each
+  // chip's count, same posture as HomeScreen.tsx's "Users & roles" tile
+  // (up to 100 users, counted client-side; no dedicated count endpoint).
+  const [allUsers, setAllUsers] = useState<UserListItem[]>([]);
 
   // Debounce the raw text input into `debouncedSearch` so `load()` below
   // doesn't fire a `GET /users` on every keystroke.
@@ -137,9 +126,6 @@ export function UsersListScreen() {
       if (roleFilter !== 'ALL') {
         params.set('role', roleFilter);
       }
-      if (statusFilter !== 'ALL') {
-        params.set('status', statusFilter);
-      }
       const query = params.toString();
       const result = await apiRequest<UsersListResponse>(
         `/users${query ? `?${query}` : ''}`,
@@ -152,7 +138,16 @@ export function UsersListScreen() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, roleFilter, statusFilter]);
+  }, [debouncedSearch, roleFilter]);
+
+  const loadCounts = useCallback(async () => {
+    try {
+      const result = await apiRequest<UsersListResponse>('/users?limit=100');
+      setAllUsers(result.items);
+    } catch {
+      // Leave the previous counts visible on a transient failure.
+    }
+  }, []);
 
   // Filter/search changes while this screen is already focused.
   useEffect(() => {
@@ -165,150 +160,293 @@ export function UsersListScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
-    }, [load]),
+      void loadCounts();
+    }, [load, loadCounts]),
   );
 
-  function confirmDeactivate(user: UserListItem): void {
-    Alert.alert(
-      'Deactivate user',
-      `${user.name} will no longer be able to sign in. This cannot be undone from this screen.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Deactivate',
-          style: 'destructive',
-          onPress: () => {
-            void deactivate(user.id);
-          },
-        },
-      ],
-    );
-  }
-
-  async function deactivate(userId: string): Promise<void> {
-    setDeactivatingId(userId);
-    try {
-      await apiRequest(`/users/${userId}`, {
-        method: 'PATCH',
-        body: { status: 'INACTIVE' },
-        idempotencyKey: generateIdempotencyKey(),
-      });
-      await load();
-    } catch {
-      Alert.alert('Could not deactivate', 'Please try again.');
-    } finally {
-      setDeactivatingId(null);
-    }
-  }
+  const activeCount = allUsers.filter((u) => u.status === 'ACTIVE').length;
+  const inactiveCount = allUsers.length - activeCount;
+  const countForRole = (role: RoleKey) =>
+    allUsers.filter((u) => u.role === role).length;
 
   return (
-    <View className="flex-1 bg-white">
-      <View className="border-b border-gray-200 px-4 py-3">
-        <View className="flex-row items-center justify-between">
-          <Text className="text-lg font-semibold text-brand-700">Users</Text>
+    <View style={{ flex: 1, backgroundColor: BG }}>
+      <View
+        style={{
+          paddingTop: insets.top + 12,
+          paddingHorizontal: 20,
+          paddingBottom: 12,
+          gap: 12,
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <Pressable
-            className="rounded-md bg-brand-600 px-3 py-2"
-            onPress={() => navigation.navigate('UserForm', undefined)}
-            testID="users-list-add"
+            accessibilityLabel="Back to home"
+            onPress={() => navigation.goBack()}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: BORDER,
+              backgroundColor: '#FFFFFF',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
           >
-            <Text className="text-xs font-semibold text-white">+ Add user</Text>
+            <OutlineIcon
+              color={INK}
+              shapes={ICON_BACK}
+              size={20}
+              strokeWidth={2}
+            />
           </Pressable>
+          <View style={{ gap: 2 }}>
+            <Text style={{ fontSize: 13, color: MUTED }}>
+              {activeCount} active · {inactiveCount} inactive
+            </Text>
+            <Text style={{ fontSize: 28, fontWeight: '700', color: INK }}>
+              Users &amp; roles
+            </Text>
+          </View>
         </View>
 
-        <TextInput
-          autoCapitalize="none"
-          autoCorrect={false}
-          className="mt-3 rounded-md border border-gray-300 px-3 py-2 text-base text-gray-900"
-          onChangeText={setSearchInput}
-          placeholder="Search name, username or email"
-          testID="users-list-search"
-          value={searchInput}
-        />
-
-        <View className="mt-3 flex-row flex-wrap">
-          {ROLE_FILTER_OPTIONS.map((option) => (
-            <Chip
-              active={roleFilter === option}
-              key={`role-${option}`}
-              label={option === 'ALL' ? 'All roles' : ROLE_LABELS[option]}
-              onPress={() => setRoleFilter(option)}
-              testID={`users-list-role-filter-${option}`}
-            />
-          ))}
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            height: 48,
+            paddingHorizontal: 12,
+            borderRadius: 12,
+            backgroundColor: '#FFFFFF',
+            borderWidth: 1.5,
+            borderColor: '#CBD2DD',
+          }}
+        >
+          <OutlineIcon color={MUTED} shapes={ICON_SEARCH} size={18} />
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            onChangeText={setSearchInput}
+            placeholder="Search name, username or email"
+            placeholderTextColor={MUTED}
+            style={{ flexGrow: 1, fontSize: 15, fontWeight: '500', color: INK }}
+            testID="users-list-search"
+            value={searchInput}
+          />
         </View>
-        <View className="mt-2 flex-row flex-wrap">
-          {STATUS_FILTER_OPTIONS.map((option) => (
-            <Chip
-              active={statusFilter === option}
-              key={`status-${option}`}
-              label={option === 'ALL' ? 'All statuses' : option}
-              onPress={() => setStatusFilter(option)}
-              testID={`users-list-status-filter-${option}`}
-            />
-          ))}
+
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Pressable
+            onPress={() => setRoleFilter('ALL')}
+            style={{
+              height: 36,
+              paddingHorizontal: 14,
+              borderRadius: 999,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: roleFilter === 'ALL' ? INK : '#FFFFFF',
+              borderWidth: roleFilter === 'ALL' ? 0 : 1.5,
+              borderColor: '#CBD2DD',
+            }}
+            testID="users-list-role-filter-ALL"
+          >
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: '600',
+                color: roleFilter === 'ALL' ? '#FFFFFF' : INK,
+              }}
+            >
+              All
+            </Text>
+          </Pressable>
+          {ROLE_FILTER_OPTIONS.map(({ key, label }) => {
+            const active = roleFilter === key;
+            const count = countForRole(key);
+            return (
+              <Pressable
+                key={key}
+                onPress={() => setRoleFilter(key)}
+                style={{
+                  height: 36,
+                  paddingHorizontal: 14,
+                  borderRadius: 999,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: active ? INK : '#FFFFFF',
+                  borderWidth: active ? 0 : 1.5,
+                  borderColor: '#CBD2DD',
+                }}
+                testID={`users-list-role-filter-${key}`}
+              >
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: '600',
+                    color: active ? '#FFFFFF' : INK,
+                  }}
+                >
+                  {count > 0 ? `${label} · ${count}` : label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
       </View>
 
       {loading && items.length === 0 ? (
-        <View className="flex-1 items-center justify-center">
+        <View
+          style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+        >
           <ActivityIndicator testID="users-list-loading" />
         </View>
       ) : (
-        <FlatList
-          data={items}
-          keyExtractor={(item) => item.id}
-          ListEmptyComponent={
-            <View className="items-center py-10">
-              <Text className="text-sm text-gray-500">No users found.</Text>
-            </View>
-          }
-          renderItem={({ item }) => (
-            <Pressable
-              className="flex-row items-center border-b border-gray-100 px-4 py-3"
-              onPress={() => navigation.navigate('UserForm', { user: item })}
-              testID={`users-list-row-${item.id}`}
-            >
-              <View className="h-10 w-10 items-center justify-center rounded-full bg-brand-600">
-                <Text className="font-semibold text-white">
-                  {initialFor(item.name)}
-                </Text>
-              </View>
-              <View className="ml-3 flex-1">
-                <Text className="text-base text-gray-900">{item.name}</Text>
-                <Text className="text-xs text-gray-500">
-                  {ROLE_LABELS[item.role]}
-                  {item.halfDayRate ? ` · ₹${item.halfDayRate}/half-day` : ''}
-                </Text>
-              </View>
-              <Text
-                className={
-                  item.status === 'ACTIVE'
-                    ? 'mr-3 text-xs font-medium text-green-700'
-                    : 'mr-3 text-xs font-medium text-gray-400'
-                }
-              >
-                {item.status}
-              </Text>
-              {item.status === 'ACTIVE' ? (
-                <Pressable
-                  disabled={deactivatingId === item.id}
-                  onPress={(event) => {
-                    event.stopPropagation();
-                    confirmDeactivate(item);
-                  }}
-                  testID={`users-list-deactivate-${item.id}`}
-                >
-                  <Text className="text-xs font-medium text-red-600">
-                    {deactivatingId === item.id
-                      ? 'Deactivating…'
-                      : 'Deactivate'}
+        <View style={{ flex: 1, paddingHorizontal: 20 }}>
+          <View
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderWidth: 1,
+              borderColor: BORDER,
+              borderRadius: 16,
+              overflow: 'hidden',
+            }}
+          >
+            <FlatList
+              contentContainerStyle={{
+                paddingBottom: 84 + insets.bottom + 20,
+              }}
+              data={items}
+              keyExtractor={(item) => item.id}
+              ListEmptyComponent={
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <Text style={{ fontSize: 14, color: MUTED }}>
+                    No users found.
                   </Text>
-                </Pressable>
-              ) : null}
-            </Pressable>
-          )}
-        />
+                </View>
+              }
+              renderItem={({ item, index }) => {
+                const colors = statusColors(item.status);
+                return (
+                  <Pressable
+                    onPress={() =>
+                      navigation.navigate('UserForm', { user: item })
+                    }
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 12,
+                      paddingHorizontal: 14,
+                      paddingVertical: 12,
+                      borderBottomWidth: index === items.length - 1 ? 0 : 1,
+                      borderBottomColor: '#ECEFF4',
+                    }}
+                    testID={`users-list-row-${item.id}`}
+                  >
+                    <View
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 20,
+                        backgroundColor: colors.bg,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 14,
+                          fontWeight: '700',
+                          color: colors.fg,
+                        }}
+                      >
+                        {initialsFor(item.name)}
+                      </Text>
+                    </View>
+                    <View style={{ flexGrow: 1, minWidth: 0, gap: 2 }}>
+                      <Text
+                        style={{
+                          fontSize: 15,
+                          fontWeight: '700',
+                          color: colors.nameColor,
+                        }}
+                      >
+                        {item.name}
+                      </Text>
+                      <Text style={{ fontSize: 12, color: MUTED }}>
+                        {ROLE_LABELS[item.role]}
+                        {item.halfDayRate
+                          ? ` · ₹${item.halfDayRate}/half-day`
+                          : ''}
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        height: 22,
+                        paddingHorizontal: 8,
+                        borderRadius: 999,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: colors.bg,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: '700',
+                          color: colors.fg,
+                        }}
+                      >
+                        {item.status === 'ACTIVE' ? 'Active' : 'Inactive'}
+                      </Text>
+                    </View>
+                  </Pressable>
+                );
+              }}
+            />
+          </View>
+        </View>
       )}
+
+      <Pressable
+        onPress={() => navigation.navigate('UserForm', undefined)}
+        style={{
+          position: 'absolute',
+          right: 20,
+          bottom: 84 + insets.bottom + 20,
+          height: 56,
+          paddingHorizontal: 20,
+          borderRadius: 18,
+          backgroundColor: BLUE,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
+          shadowColor: '#1D4ED8',
+          shadowOpacity: 0.3,
+          shadowRadius: 16,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: 6,
+        }}
+        testID="users-list-add"
+      >
+        <OutlineIcon
+          color="#FFFFFF"
+          shapes={ICON_PLUS}
+          size={20}
+          strokeWidth={2.2}
+        />
+        <Text style={{ fontSize: 15, fontWeight: '700', color: '#FFFFFF' }}>
+          New user
+        </Text>
+      </Pressable>
+
+      <AdminBottomNav
+        active={null}
+        bottomInset={insets.bottom}
+        onHomePress={() => navigation.goBack()}
+      />
     </View>
   );
 }

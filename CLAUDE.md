@@ -21,6 +21,38 @@ Field Sales & Beat Execution: a company-scoped mobile app for distributor field 
 
 Five roles, one per user per company in release 1: **System Admin** (platform, API-only, no mobile screens), **Company Admin** (masters, reports, salary — mobile), **Manager** (attendance, daily review, extra shops — mobile), **Marketing Executive** (runs the beat — mobile), **Employee** (attendance/salary subject only, no login). The Marketing Executive is **never** shown `distanceMeters`, `isExceedRange` or quality flags, in any screen or API response — this is enforced structurally (a serialisation interceptor keyed on a permission), not just hidden in the UI, and is covered by a test per endpoint.
 
+## UI must match `docs/ui-design/Field_Sales_Beat_App.html` exactly
+
+This is a standing, non-negotiable rule: every screen built in the mobile app must follow its
+corresponding board in `docs/ui-design/Field_Sales_Beat_App.html` exactly — colors, spacing,
+typography, icon shapes, border radii, layout. Do not approximate with "close enough" NativeWind/
+Tailwind defaults or hand-drawn placeholder shapes when the design calls for something specific
+(e.g. a particular eye-icon glyph, an exact hex background). If matching exactly requires a new
+native dependency (e.g. `react-native-svg` for a precise icon path), add it rather than settle for
+a rough approximation — flag the native-rebuild requirement, but don't skip the fidelity.
+
+The HTML file itself is a compressed design-tool export, not plain markup: each board
+(`docs/ui-design/Field_Sales_Beat_App.html`'s `<section class="board">` entries, one per PRD §4
+screen) is an `about:blank#<uuid>` iframe placeholder, and the real per-board HTML/CSS lives
+gzip+base64-encoded inside a `<script type="__bundler/manifest">` JSON blob keyed by that same
+uuid. To get the exact spec for a screen, decode its entry rather than grepping the raw file:
+
+```python
+import re, json, base64, gzip
+
+with open("docs/ui-design/Field_Sales_Beat_App.html", "rb") as f:
+    data = f.read()
+start = data.index(b'<script type="__bundler/manifest">') + len(b'<script type="__bundler/manifest">')
+end = data.index(b'</script>', start)
+manifest = json.loads(data[start:end].strip())
+
+entry = manifest["<uuid-for-the-board-you-need>"]  # uuid comes from the iframe's src= near the board's <h2> title
+html = gzip.decompress(base64.b64decode(entry["data"])).decode("utf-8")
+```
+
+Read the resulting HTML for the exact hex colors, pixel dimensions, border radii, font weights,
+and (for icons) SVG path data, and carry those values into the React Native screen verbatim.
+
 ## Build order (Spec Kit slices)
 
 Architecture §21 lays out 16 slices, each a full vertical (migration + API + tests + mobile screen — "backend done, UI later" is explicitly disallowed by the engineering constitution). Build and reason about them in this order:

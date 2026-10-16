@@ -16,7 +16,9 @@ Base path `/api/v1/users`. Company Admin only, tenant-scoped (the Prisma extensi
     id: string; name: string; role: RoleKey; status: UserStatus;
     username: string | null;      // null for EMPLOYEE
     email: string | null;
+    monthlySalary: string | null; // decimal as string
     halfDayRate: string | null;   // current (open-ended) rate, decimal as string
+    rateEffectiveFrom: string | null; // that rate's effective-from date, ISO "YYYY-MM-DD"; null iff halfDayRate is
     photoUrl: string | null;
   }>;
   nextCursor: string | null;

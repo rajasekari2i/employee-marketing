@@ -4,6 +4,17 @@
     <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
         <!-- Customize your theme here. -->
         <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
+        <!-- colorAccent drives every stock AppCompat/Material system dialog's
+             accent (DatePickerDialog's header + selected day + OK/Cancel
+             button text, among others) — without this they fall back to
+             AppCompat's default teal, which doesn't match the design's blue
+             (colors.xml's brand_600, the same value as every board in
+             docs/ui-design/Field_Sales_Beat_App.html). colorPrimary/
+             colorPrimaryDark are set alongside for the same reason, for any
+             other stock widget that reads them instead. -->
+        <item name="colorPrimary">@color/brand_600</item>
+        <item name="colorPrimaryDark">@color/brand_700</item>
+        <item name="colorAccent">@color/brand_600</item>
     </style>
 
 </resources>
