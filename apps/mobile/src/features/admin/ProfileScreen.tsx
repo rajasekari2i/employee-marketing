@@ -582,6 +582,7 @@ export function ProfileScreen() {
         active={null}
         bottomInset={insets.bottom}
         onHomePress={() => navigation.goBack()}
+        onBeatsPress={() => navigation.navigate('BeatPlansList')}
         onShopsPress={() => navigation.navigate('ShopsList')}
       />
     </View>

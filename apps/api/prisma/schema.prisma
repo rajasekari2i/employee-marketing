@@ -158,6 +158,8 @@ model User {
   salaryRates   UserSalaryRate[]
   refreshTokens RefreshToken[]
   otpChallenges OtpChallenge[]
+  // 003-beat-plans-crud: the reverse side of BeatPlan.executiveId.
+  assignedBeatPlans BeatPlan[]
 
   @@unique([companyId, username])
   @@index([companyId, status])
@@ -331,6 +333,8 @@ model Shop {
 
   photos     ShopPhoto[]
   pinChanges ShopPinChange[]
+  // 003-beat-plans-crud: the reverse side of BeatPlanShop.shopId.
+  beatPlanShops BeatPlanShop[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -384,4 +388,60 @@ model ShopPinChange {
 
   @@index([companyId, shopId, status])
   @@map("shop_pin_changes")
+}
+
+// ---------------------------------------------------------------------------
+// Beat plans (003-beat-plans-crud)
+// ---------------------------------------------------------------------------
+
+// data-model.md's BeatPlan entity. Deliberately omits the full architecture
+// model's `assignments DailyAssignment[]` relation — `DailyAssignment`
+// doesn't exist yet (that's 008-beat-day); added additively whenever that
+// slice is built, the same way this slice is now adding Shop.beatPlanShops
+// and User.assignedBeatPlans onto models 002-shops-crud/001-company-user-auth
+// already shipped.
+model BeatPlan {
+  id        String @id @default(uuid())
+  companyId String @map("company_id")
+
+  code String
+  name String
+
+  executiveId String? @map("executive_id")
+  executive   User?   @relation(fields: [executiveId], references: [id])
+
+  workingDays Int[] @map("working_days")
+
+  isActive Boolean @default(true) @map("is_active")
+
+  shops BeatPlanShop[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([companyId, code])
+  @@index([companyId, isActive])
+  @@index([companyId, executiveId])
+  @@map("beat_plans")
+}
+
+// One shop's position within one beat plan's route — current-state data,
+// not a history/audit entity (data-model.md's "Why no append-only
+// treatment" note). Fully replaced on every save (research.md §1); sequence
+// is always server-assigned from array position, never a client field.
+model BeatPlanShop {
+  id        String @id @default(uuid())
+  companyId String @map("company_id")
+
+  beatPlanId String   @map("beat_plan_id")
+  beatPlan   BeatPlan @relation(fields: [beatPlanId], references: [id], onDelete: Cascade)
+
+  shopId String @map("shop_id")
+  shop   Shop   @relation(fields: [shopId], references: [id])
+
+  sequence Int
+
+  @@unique([beatPlanId, shopId])
+  @@index([companyId, beatPlanId, sequence])
+  @@map("beat_plan_shops")
 }

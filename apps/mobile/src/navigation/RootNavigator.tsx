@@ -4,6 +4,9 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ActivityIndicator, Text, View } from 'react-native';
 import type { RoleKey, UserStatus } from '@field-sales/shared';
 
+import { BeatPlanFormScreen } from '../features/admin/BeatPlanFormScreen';
+import { BeatPlansListScreen } from '../features/admin/BeatPlansListScreen';
+import type { BeatPlanSummaryForEdit } from '../features/admin/BeatPlansListScreen';
 import { HomeScreen } from '../features/admin/HomeScreen';
 import { ProfileScreen } from '../features/admin/ProfileScreen';
 import { ShopFormScreen } from '../features/admin/ShopFormScreen';
@@ -79,10 +82,37 @@ export type AdminStackParamList = {
   ChangePassword: undefined;
   UsersList: undefined;
   UserForm: { user?: UserSummaryForEdit } | undefined;
-  /** 002-shops-crud, PRD §4 screen 4.8. */
-  ShopsList: undefined;
-  /** 002-shops-crud, PRD §4 screen 4.9. `undefined` means "create a new shop," same convention as `UserForm` above. */
-  ShopForm: { shop?: ShopSummaryForEdit } | undefined;
+  /**
+   * 002-shops-crud, PRD §4 screen 4.8. 003-beat-plans-crud (research.md §2)
+   * added the optional selection-mode params: when `selectionMode` is set,
+   * this screen becomes a multi-select picker (used by
+   * `BeatPlanFormScreen`'s "+ Add existing shops") instead of navigating to
+   * `ShopForm` on tap. No params (every existing call site) is unchanged.
+   */
+  ShopsList:
+    | {
+        selectionMode?: boolean;
+        onSelect?: (shops: ShopSummaryForEdit[]) => void;
+      }
+    | undefined;
+  /**
+   * 002-shops-crud, PRD §4 screen 4.9. `undefined` means "create a new
+   * shop," same convention as `UserForm` above. 003-beat-plans-crud
+   * (research.md §3) added the optional `onCreated` callback: when present
+   * and a *create* save succeeds, it's called with the new shop before
+   * `navigation.goBack()` — used by `BeatPlanFormScreen`'s "Create a new
+   * shop in this beat" instead of only going back.
+   */
+  ShopForm:
+    | {
+        shop?: ShopSummaryForEdit;
+        onCreated?: (shop: ShopSummaryForEdit) => void;
+      }
+    | undefined;
+  /** 003-beat-plans-crud, PRD §4 screen 4.6. */
+  BeatPlansList: undefined;
+  /** 003-beat-plans-crud, PRD §4 screen 4.7. `undefined` means "create a new beat plan," same convention as `UserForm`/`ShopForm` above. */
+  BeatPlanForm: { beatPlan?: BeatPlanSummaryForEdit } | undefined;
 };
 
 export type ComingSoonStackParamList = {
@@ -161,6 +191,16 @@ function AdminNavigator() {
       <AdminStack.Screen
         name="ShopForm"
         component={ShopFormScreen}
+        options={{ headerShown: false }}
+      />
+      <AdminStack.Screen
+        name="BeatPlansList"
+        component={BeatPlansListScreen}
+        options={{ headerShown: false }}
+      />
+      <AdminStack.Screen
+        name="BeatPlanForm"
+        component={BeatPlanFormScreen}
         options={{ headerShown: false }}
       />
     </AdminStack.Navigator>

@@ -25,6 +25,9 @@ export const ERROR_CODES = [
   // (FR-008) — same "409, never a silent overwrite" shape as
   // USERNAME_TAKEN/COMPANY_CODE_TAKEN above.
   'DUPLICATE_SHOP_CODE',
+  // 003-beat-plans-crud, contracts/beat-plans.md: a beat plan's code is
+  // unique per company (FR-010) — same shape as DUPLICATE_SHOP_CODE above.
+  'DUPLICATE_BEAT_PLAN_CODE',
   'IDEMPOTENCY_KEY_REUSED',
   'OTP_INCORRECT',
   'OTP_EXPIRED',
@@ -57,6 +60,7 @@ export const ERROR_STATUS: Readonly<Record<ErrorCode, number>> = {
   USERNAME_TAKEN: 409,
   COMPANY_CODE_TAKEN: 409,
   DUPLICATE_SHOP_CODE: 409,
+  DUPLICATE_BEAT_PLAN_CODE: 409,
   OTP_INCORRECT: 400,
   OTP_EXPIRED: 410,
   OTP_ATTEMPTS_EXHAUSTED: 429,
@@ -79,6 +83,7 @@ export const ERROR_TITLES: Readonly<Record<ErrorCode, string>> = {
   USERNAME_TAKEN: 'Username already taken',
   COMPANY_CODE_TAKEN: 'Company code already taken',
   DUPLICATE_SHOP_CODE: 'Shop code already taken',
+  DUPLICATE_BEAT_PLAN_CODE: 'Beat plan code already taken',
   OTP_INCORRECT: 'Incorrect OTP',
   OTP_EXPIRED: 'OTP expired',
   OTP_ATTEMPTS_EXHAUSTED: 'OTP attempts exhausted',

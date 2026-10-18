@@ -70,12 +70,15 @@ function NavItem({
 export function AdminBottomNav({
   active,
   onHomePress,
+  onBeatsPress,
   onShopsPress,
   bottomInset = 0,
 }: {
   /** `null` when the current screen isn't one of these 4 (e.g. Profile). */
   active: AdminBottomNavTab | null;
   onHomePress: () => void;
+  /** 003-beat-plans-crud: navigates to the beat plan directory. Defaults to the "coming soon" alert for any screen that hasn't been updated to pass this yet. */
+  onBeatsPress?: () => void;
   /** 002-shops-crud: navigates to the shop directory. Defaults to the "coming soon" alert for any screen that hasn't been updated to pass this yet. */
   onShopsPress?: () => void;
   bottomInset?: number;
@@ -111,7 +114,7 @@ export function AdminBottomNav({
         active={active === 'Beats'}
         icon={ICON_BEATS}
         label="Beats"
-        onPress={() => comingSoon('Beat plans')}
+        onPress={onBeatsPress ?? (() => comingSoon('Beat plans'))}
       />
       <NavItem
         active={active === 'Shops'}

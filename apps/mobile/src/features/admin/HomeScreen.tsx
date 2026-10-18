@@ -75,6 +75,11 @@ interface ShopsListResponse {
   nextCursor: string | null;
 }
 
+interface BeatPlansListResponse {
+  items: Array<{ executive: { id: string; name: string } | null }>;
+  nextCursor: string | null;
+}
+
 type HomeNavigationProp = NativeStackNavigationProp<
   AdminStackParamList,
   'Home'
@@ -168,6 +173,10 @@ export function HomeScreen() {
     total: number;
     withoutPin: number;
   } | null>(null);
+  const [beatPlanCounts, setBeatPlanCounts] = useState<{
+    total: number;
+    unassigned: number;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -226,6 +235,23 @@ export function HomeScreen() {
         // Leave shopCounts null — the tile falls back to a neutral subtitle.
       });
 
+    // Best-effort — the "Beat plans" tile's count, same posture as
+    // shopCounts above (up to 100 plans, counted client-side, no dedicated
+    // count endpoint).
+    void apiRequest<BeatPlansListResponse>('/beat-plans?limit=100')
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+        const unassigned = result.items.filter(
+          (p) => p.executive === null,
+        ).length;
+        setBeatPlanCounts({ total: result.items.length, unassigned });
+      })
+      .catch(() => {
+        // Leave beatPlanCounts null — the tile falls back to a neutral subtitle.
+      });
+
     return () => {
       cancelled = true;
     };
@@ -274,6 +300,10 @@ export function HomeScreen() {
 
   const shopsSubtitle = shopCounts
     ? `${shopCounts.total} shops · ${shopCounts.withoutPin} without pin`
+    : 'View all';
+
+  const beatPlansSubtitle = beatPlanCounts
+    ? `${beatPlanCounts.total} plans · ${beatPlanCounts.unassigned} unassigned`
     : 'View all';
 
   return (
@@ -393,8 +423,8 @@ export function HomeScreen() {
           />
           <Tile
             icon={ICON_BEAT_PLANS}
-            onPress={() => comingSoon('Beat plans')}
-            subtitle="Coming soon"
+            onPress={() => navigation.navigate('BeatPlansList')}
+            subtitle={beatPlansSubtitle}
             title="Beat plans"
           />
           <Tile
@@ -489,6 +519,7 @@ export function HomeScreen() {
         active="Home"
         bottomInset={insets.bottom}
         onHomePress={() => {}}
+        onBeatsPress={() => navigation.navigate('BeatPlansList')}
         onShopsPress={() => navigation.navigate('ShopsList')}
       />
 

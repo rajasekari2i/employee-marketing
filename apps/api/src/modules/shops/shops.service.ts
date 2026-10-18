@@ -24,7 +24,7 @@ type ShopsTx = Pick<
   'shop' | 'shopPhoto' | 'shopPinChange' | '$executeRaw'
 >;
 
-/** One `GET /shops` list item (contracts/shops.md). `beatPlanName` is always `null` — research.md §1: `BeatPlan` doesn't exist yet. */
+/** One `GET /shops` list item (contracts/shops.md). */
 export interface ShopListItem {
   id: string;
   name: string;
@@ -44,7 +44,15 @@ export interface ShopListItem {
   /** `null` = using the company-wide default (FR-007) — missing from the edit form's prefill until this was added (found live: saved correctly on create/update, never returned by GET). */
   verificationRadiusMeters: number | null;
   isActive: boolean;
-  beatPlanName: null;
+  /**
+   * 003-beat-plans-crud follow-up: every beat plan this shop currently
+   * belongs to (a shop can be on more than one plan, OD-03 — this is why
+   * it's an array, not a single nullable name). Empty = not on any plan
+   * ("Unassigned" in the UI). Ownership of the membership itself lives on
+   * `BeatPlan`/`BeatPlanShop` (added/removed from the beat plan's own shop
+   * list), never editable from here — this is read-only, display-only data.
+   */
+  beatPlanNames: string[];
   /** `id` is each `ShopPhoto` row's own id — needed by `DELETE /shops/:id/photos/:photoId`, not just display. */
   photos: Array<{ id: string; url: string }>;
 }
@@ -72,6 +80,7 @@ interface ShopRow {
   locationSource: string | null;
   verificationRadiusMeters: number | null;
   isActive: boolean;
+  beatPlanShops: Array<{ beatPlan: { name: string } }>;
   photos: Array<{ id: string; fileId: string }>;
 }
 
@@ -116,7 +125,9 @@ export class ShopsService {
    * `GET /shops`. `search` matches name/shopCode/ownerName/phone (FR-003);
    * `pinStatus: 'NO_PIN'` filters to `locationStatus: 'NONE'`, `isActive`
    * filters on that boolean (FR-004); cursor-paginated, same shape as
-   * `UsersService.list()`. No `beatPlanId` filter — research.md §1.
+   * `UsersService.list()`. `beatPlanId` (003-beat-plans-crud follow-up)
+   * matches shops that are on that specific plan — the directory's "All
+   * beats" filter.
    */
   async list(
     companyId: string,
@@ -128,6 +139,9 @@ export class ShopsService {
     const where: Prisma.ShopWhereInput = {
       ...(query.pinStatus === 'NO_PIN' ? { locationStatus: 'NONE' } : {}),
       ...(query.isActive !== undefined ? { isActive: query.isActive } : {}),
+      ...(query.beatPlanId
+        ? { beatPlanShops: { some: { beatPlanId: query.beatPlanId } } }
+        : {}),
       ...(query.search
         ? {
             OR: [
@@ -399,6 +413,9 @@ export class ShopsService {
     locationSource: true,
     verificationRadiusMeters: true,
     isActive: true,
+    beatPlanShops: {
+      select: { beatPlan: { select: { name: true } } },
+    },
     photos: {
       orderBy: { sortOrder: 'asc' as const },
       select: { id: true, fileId: true },
@@ -450,7 +467,7 @@ export class ShopsService {
       locationSource: (row.locationSource as LocationSource | null) ?? null,
       verificationRadiusMeters: row.verificationRadiusMeters,
       isActive: row.isActive,
-      beatPlanName: null,
+      beatPlanNames: row.beatPlanShops.map((bps) => bps.beatPlan.name),
       photos: row.photos.map((photo) => ({
         id: photo.id,
         url: this.filesService.signFileUrl(

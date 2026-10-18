@@ -34,6 +34,7 @@ import {
 import { GOOGLE_MAPS_API_KEY } from '../../config';
 import type { AdminStackParamList } from '../../navigation/RootNavigator';
 import { BG, BLUE, BORDER, INK, LABEL, MUTED } from './adminDesign';
+import type { ShopSummaryForEdit } from './ShopsListScreen';
 
 /**
  * PRD §4 screen 4.9 ("New shop"). Layout/colors/icons below are taken
@@ -42,8 +43,10 @@ import { BG, BLUE, BORDER, INK, LABEL, MUTED } from './adminDesign';
  * separate "edit shop" board — per the feature spec, editing opens this
  * same screen pre-filled, titled "Edit shop" instead of "New shop" (FR-013).
  *
- * "Beat plan" is rendered exactly as the design shows it but disabled —
- * `BeatPlan` doesn't exist yet (research.md §1, 002-shops-crud).
+ * "Beat plan" (003-beat-plans-crud follow-up) is read-only here: it shows
+ * every plan this shop is currently on, but assignment itself only ever
+ * happens from the beat plan's own form — tapping it explains why rather
+ * than opening a selector.
  *
  * Location is a real `react-native-maps` `MapView` (research.md §2): tap
  * or drag to place the pin, or search an address via the Google Geocoding
@@ -239,6 +242,9 @@ export function ShopFormScreen() {
 
   const editingShop = route.params?.shop;
   const isEditing = Boolean(editingShop);
+  // Read-only display — see the "Beat plan" field below; never editable
+  // from this screen (research.md §1, carried into the beat-plans follow-up).
+  const beatPlanNames = editingShop?.beatPlanNames ?? [];
 
   const [shopCode, setShopCode] = useState(editingShop?.shopCode ?? '');
   const [isActive, setIsActive] = useState(editingShop?.isActive ?? true);
@@ -423,12 +429,12 @@ export function ShopFormScreen() {
     setSubmitting(true);
     try {
       const shop = isEditing
-        ? await apiRequest<{ id: string }>(`/shops/${editingShop?.id}`, {
+        ? await apiRequest<ShopSummaryForEdit>(`/shops/${editingShop?.id}`, {
             method: 'PATCH',
             body: parsed.data,
             idempotencyKey: generateIdempotencyKey(),
           })
-        : await apiRequest<{ id: string }>('/shops', {
+        : await apiRequest<ShopSummaryForEdit>('/shops', {
             method: 'POST',
             body: parsed.data,
             idempotencyKey: generateIdempotencyKey(),
@@ -449,6 +455,14 @@ export function ShopFormScreen() {
           body: formData,
           idempotencyKey: generateIdempotencyKey(),
         });
+      }
+
+      // 003-beat-plans-crud, research.md §3: "Create a new shop in this
+      // beat" hands the beat-plan form a callback instead of relying on it
+      // to read this screen's result some other way — only fires on a
+      // genuine create (never an edit), matching that flow's own intent.
+      if (!isEditing) {
+        route.params?.onCreated?.(shop);
       }
 
       navigation.goBack();
@@ -512,11 +526,11 @@ export function ShopFormScreen() {
           <View>
             <FieldLabel>Beat plan</FieldLabel>
             <Pressable
-              accessibilityHint="Available once beat plans are set up"
+              accessibilityHint="Managed from the beat plan's own shop list"
               onPress={() =>
                 Alert.alert(
-                  'Beat plans',
-                  'Assigning a beat plan is available once beat plans are set up.',
+                  'Beat plan',
+                  'A shop’s beat plan is managed from the beat plan itself — open the beat plan and add or remove this shop from its shop list.',
                 )
               }
               style={[
@@ -525,12 +539,21 @@ export function ShopFormScreen() {
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  opacity: 0.5,
+                  opacity: 0.7,
                 },
               ]}
               testID="shop-form-beat-plan"
             >
-              <Text style={{ fontSize: 15, color: MUTED }}>Unassigned</Text>
+              <Text
+                style={{
+                  fontSize: 15,
+                  color: beatPlanNames.length > 0 ? INK : MUTED,
+                }}
+              >
+                {beatPlanNames.length > 0
+                  ? beatPlanNames.join(', ')
+                  : 'Unassigned'}
+              </Text>
               <OutlineIcon
                 color={MUTED}
                 shapes={ICON_CHEVRON_DOWN}

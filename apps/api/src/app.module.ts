@@ -24,6 +24,7 @@ import { MeModule } from './modules/me/me.module';
 import { FilesModule } from './modules/files/files.module';
 import { UsersModule } from './modules/users/users.module';
 import { ShopsModule } from './modules/shops/shops.module';
+import { BeatPlansModule } from './modules/beat-plans/beat-plans.module';
 
 @Module({
   imports: [
@@ -55,6 +56,11 @@ import { ShopsModule } from './modules/shops/shops.module';
     // /shops/:id/photos` — the shop directory/form's API, following
     // UsersModule's exact tenant-scoping shape.
     ShopsModule,
+    // 003-beat-plans-crud: `GET/POST /beat-plans`, `PATCH /beat-plans/:id`
+    // — the beat plan directory/form's API, reusing GET /shops and GET
+    // /users as-is for its "add existing shops" and "assign an executive"
+    // pickers (research.md §2/§4) rather than duplicating either.
+    BeatPlansModule,
     // Establishes one AsyncLocalStorage-backed context per request so the
     // tenant isolation layer (Architecture §5 / CLAUDE.md Constitution
     // rule 2) — the Prisma extension in src/infra/prisma/tenant.extension.ts

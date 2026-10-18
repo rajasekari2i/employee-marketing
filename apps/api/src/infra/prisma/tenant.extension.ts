@@ -43,6 +43,11 @@ export const TENANT_MODELS = new Set<string>([
   'Shop',
   'ShopPhoto',
   'ShopPinChange',
+  // 003-beat-plans-crud: both new tenant tables, same reasoning as
+  // the 002-shops-crud entries above. See the sibling RLS migration
+  // (`<timestamp>_rls_beat_plans/migration.sql`) for Layer 2.
+  'BeatPlan',
+  'BeatPlanShop',
 ]);
 
 /** Operations whose `where` clause must be narrowed to the tenant. */

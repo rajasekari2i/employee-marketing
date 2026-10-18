@@ -26,9 +26,11 @@ export type ShopLocationInput = z.infer<typeof shopLocationSchema>;
 
 /**
  * Fields common to create and update. `beatPlanId` is deliberately absent
- * — the "Beat plan" field is shown in the UI but disabled until
- * `007-beat-plans` exists (research.md §1); there is nothing for the
- * client to send yet.
+ * — a shop's beat-plan membership is never settable from this side. It's
+ * owned by `BeatPlan`/`BeatPlanShop` (003-beat-plans-crud): added/removed
+ * via a beat plan's own `shopIds` array (contracts/beat-plans.md). `GET
+ * /shops`'s `beatPlanNames` is read-only, display-only data computed from
+ * that same join — see `shops.service.ts`.
  */
 const shopFieldsSchema = {
   shopCode: z.string().min(1).max(64),
@@ -68,10 +70,7 @@ export const updateShopSchema = z.object({
 
 export type UpdateShopInput = z.infer<typeof updateShopSchema>;
 
-/**
- * `GET /shops` query string (contracts/shops.md). No `beatPlanId` param —
- * same reason as above; nothing to filter by yet.
- */
+/** `GET /shops` query string (contracts/shops.md). */
 export const listShopsQuerySchema = z.object({
   cursor: z.string().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -85,6 +84,9 @@ export const listShopsQuerySchema = z.object({
     .enum(['true', 'false'])
     .transform((v) => v === 'true')
     .optional(),
+  // 003-beat-plans-crud follow-up: "All beats" filter on the directory —
+  // now that BeatPlan exists, matches shops that are on this specific plan.
+  beatPlanId: z.string().min(1).optional(),
 });
 
 export type ListShopsQuery = z.infer<typeof listShopsQuerySchema>;

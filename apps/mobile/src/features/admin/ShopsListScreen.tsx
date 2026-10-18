@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import {
+  useFocusEffect,
+  useNavigation,
+  useRoute,
+  type RouteProp,
+} from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
+  Modal,
   Pressable,
   Text,
   TextInput,
@@ -19,17 +24,19 @@ import {
   type IconShape,
 } from '../../components/icons/OutlineIcon';
 import type { AdminStackParamList } from '../../navigation/RootNavigator';
-import { BG, BORDER, INK, LABEL, MUTED } from './adminDesign';
+import { BG, BLUE, BORDER, INK, LABEL, MUTED } from './adminDesign';
 
 /**
  * PRD §4 screen 4.8 ("Shops · list"). Layout/colors/icons below are taken
  * verbatim from `docs/ui-design/Field_Sales_Beat_App.html` §4.8 — see that
  * board for the source of every hex value and SVG path here.
  *
- * The "All beats" filter chip is rendered exactly as the design shows it
- * but is disabled (`research.md` §1, 002-shops-crud): `BeatPlan` doesn't
- * exist yet (that's the `007-beat-plans` slice), so there is nothing to
- * filter by. Tapping it explains why instead of silently doing nothing.
+ * The "All beats" filter opens a real picker (003-beat-plans-crud
+ * follow-up) once `BeatPlan` exists — originally shipped disabled in
+ * 002-shops-crud, before that slice was built. A shop's beat-plan
+ * membership itself is still only ever set from the beat plan's own form
+ * (`BeatPlanFormScreen`'s shop list); this screen only displays/filters by
+ * it, never assigns it.
  */
 
 export interface ShopSummaryForEdit {
@@ -49,7 +56,7 @@ export interface ShopSummaryForEdit {
   locationSource: 'MAP_SEARCH' | 'MANUAL_DRAG' | null;
   verificationRadiusMeters: number | null;
   isActive: boolean;
-  beatPlanName: null;
+  beatPlanNames: string[];
   photos: Array<{ id: string; url: string }>;
 }
 
@@ -62,6 +69,7 @@ type ShopsListNavigationProp = NativeStackNavigationProp<
   AdminStackParamList,
   'ShopsList'
 >;
+type ShopsListRouteProp = RouteProp<AdminStackParamList, 'ShopsList'>;
 
 type QuickFilter = 'ALL' | 'NO_PIN' | 'INACTIVE';
 
@@ -71,6 +79,7 @@ const ICON_SEARCH: IconShape[] = [
 ];
 const ICON_CHEVRON_DOWN: IconShape[] = [{ d: 'M6 9l6 6 6-6' }];
 const ICON_PLUS: IconShape[] = [{ d: 'M12 5v14M5 12h14' }];
+const ICON_CHECK: IconShape[] = [{ d: 'M20 6L9 17l-5-5' }];
 
 /** Pin-saved: #E3EBFC/#1E3A8A; No-pin: #FCEFD9/#7A4105 (board 4.8's own `ok`/`miss` chip colors). */
 function pinChipColors(pinStatus: 'NONE' | 'APPROVED') {
@@ -87,11 +96,35 @@ function addressLine(shop: ShopSummaryForEdit): string {
 
 export function ShopsListScreen() {
   const navigation = useNavigation<ShopsListNavigationProp>();
+  const route = useRoute<ShopsListRouteProp>();
   const insets = useSafeAreaInsets();
+
+  /**
+   * 003-beat-plans-crud, research.md §2: when launched with `selectionMode`
+   * (from `BeatPlanFormScreen`'s "+ Add existing shops"), this screen
+   * becomes a multi-select picker instead of navigating to `ShopForm` on
+   * tap — the FAB becomes "Done" and calls `onSelect` with the chosen
+   * shops. No params (the normal Shops-tab case) leaves every existing
+   * behavior below unchanged.
+   */
+  const selectionMode = route.params?.selectionMode ?? false;
+  const onSelect = route.params?.onSelect;
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filter, setFilter] = useState<QuickFilter>('ALL');
+
+  // Beat-plans follow-up: "All beats" opens a real picker once a plan is
+  // chosen, `beatPlanId` narrows the list server-side (contracts/shops.md).
+  const [beatPlanOptions, setBeatPlanOptions] = useState<
+    Array<{ id: string; name: string }>
+  >([]);
+  const [selectedBeatPlan, setSelectedBeatPlan] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [beatPlanPickerOpen, setBeatPlanPickerOpen] = useState(false);
 
   const [items, setItems] = useState<ShopSummaryForEdit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,6 +140,24 @@ export function ShopsListScreen() {
     return () => clearTimeout(handle);
   }, [searchInput]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void apiRequest<{ items: Array<{ id: string; name: string }> }>(
+      '/beat-plans?limit=100',
+    )
+      .then((result) => {
+        if (!cancelled) {
+          setBeatPlanOptions(result.items);
+        }
+      })
+      .catch(() => {
+        // Leave beatPlanOptions empty — the picker shows "All beats" only.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -119,6 +170,9 @@ export function ShopsListScreen() {
       } else if (filter === 'INACTIVE') {
         params.set('isActive', 'false');
       }
+      if (selectedBeatPlan) {
+        params.set('beatPlanId', selectedBeatPlan.id);
+      }
       const query = params.toString();
       const result = await apiRequest<ShopsListResponse>(
         `/shops${query ? `?${query}` : ''}`,
@@ -130,7 +184,7 @@ export function ShopsListScreen() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, filter]);
+  }, [debouncedSearch, filter, selectedBeatPlan]);
 
   const loadCounts = useCallback(async () => {
     try {
@@ -153,6 +207,24 @@ export function ShopsListScreen() {
   );
 
   const noPinCount = allShops.filter((s) => s.pinStatus === 'NONE').length;
+
+  function toggleSelected(shopId: string): void {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(shopId)) {
+        next.delete(shopId);
+      } else {
+        next.add(shopId);
+      }
+      return next;
+    });
+  }
+
+  function finishSelection(): void {
+    const selectedShops = items.filter((item) => selectedIds.has(item.id));
+    onSelect?.(selectedShops);
+    navigation.goBack();
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: BG }}>
@@ -201,13 +273,7 @@ export function ShopsListScreen() {
 
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <Pressable
-            accessibilityHint="Available once beat plans are set up"
-            onPress={() =>
-              Alert.alert(
-                'Beat plans',
-                'Filtering by beat plan is available once beat plans are set up.',
-              )
-            }
+            onPress={() => setBeatPlanPickerOpen(true)}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
@@ -215,18 +281,24 @@ export function ShopsListScreen() {
               height: 36,
               paddingHorizontal: 14,
               borderRadius: 999,
-              borderWidth: 1.5,
+              borderWidth: selectedBeatPlan ? 0 : 1.5,
               borderColor: '#CBD2DD',
-              backgroundColor: '#FFFFFF',
-              opacity: 0.5,
+              backgroundColor: selectedBeatPlan ? INK : '#FFFFFF',
             }}
             testID="shops-list-beat-filter"
           >
-            <Text style={{ fontSize: 13, fontWeight: '600', color: INK }}>
-              All beats
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: '600',
+                color: selectedBeatPlan ? '#FFFFFF' : INK,
+              }}
+              numberOfLines={1}
+            >
+              {selectedBeatPlan?.name ?? 'All beats'}
             </Text>
             <OutlineIcon
-              color={INK}
+              color={selectedBeatPlan ? '#FFFFFF' : INK}
               shapes={ICON_CHEVRON_DOWN}
               size={14}
               strokeWidth={2}
@@ -282,7 +354,9 @@ export function ShopsListScreen() {
         <FlatList
           contentContainerStyle={{
             paddingHorizontal: 20,
-            paddingBottom: 84 + insets.bottom + 90,
+            paddingBottom: selectionMode
+              ? insets.bottom + 90
+              : 84 + insets.bottom + 90,
             gap: 10,
           }}
           data={items}
@@ -296,13 +370,18 @@ export function ShopsListScreen() {
           }
           renderItem={({ item }) => {
             const chip = pinChipColors(item.pinStatus);
+            const selected = selectedIds.has(item.id);
             return (
               <Pressable
-                onPress={() => navigation.navigate('ShopForm', { shop: item })}
+                onPress={() =>
+                  selectionMode
+                    ? toggleSelected(item.id)
+                    : navigation.navigate('ShopForm', { shop: item })
+                }
                 style={{
                   backgroundColor: '#FFFFFF',
-                  borderWidth: 1,
-                  borderColor: BORDER,
+                  borderWidth: selected ? 2 : 1,
+                  borderColor: selected ? BLUE : BORDER,
                   borderRadius: 16,
                   padding: 14,
                   gap: 5,
@@ -318,12 +397,37 @@ export function ShopsListScreen() {
                     gap: 8,
                   }}
                 >
+                  {selectionMode ? (
+                    <View
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: 4,
+                        borderWidth: 1.5,
+                        borderColor: selected ? BLUE : '#AEB7C5',
+                        backgroundColor: selected ? BLUE : '#FFFFFF',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {selected ? (
+                        <OutlineIcon
+                          color="#FFFFFF"
+                          shapes={ICON_CHECK}
+                          size={13}
+                          strokeWidth={2.5}
+                        />
+                      ) : null}
+                    </View>
+                  ) : null}
                   <Text
                     style={{
                       fontSize: 16,
                       fontWeight: '700',
                       color: INK,
                       flexShrink: 1,
+                      flexGrow: 1,
                     }}
                     numberOfLines={1}
                   >
@@ -358,7 +462,11 @@ export function ShopsListScreen() {
                   <Text style={{ fontFamily: 'monospace' }}>
                     {item.shopCode}
                   </Text>
-                  {' · Unassigned · '}
+                  {' · '}
+                  {item.beatPlanNames.length > 0
+                    ? item.beatPlanNames.join(', ')
+                    : 'Unassigned'}
+                  {' · '}
                   {item.ownerName ?? '—'}
                 </Text>
               </Pressable>
@@ -368,11 +476,15 @@ export function ShopsListScreen() {
       )}
 
       <Pressable
-        onPress={() => navigation.navigate('ShopForm', { shop: undefined })}
+        onPress={
+          selectionMode
+            ? finishSelection
+            : () => navigation.navigate('ShopForm', { shop: undefined })
+        }
         style={{
           position: 'absolute',
           right: 20,
-          bottom: 84 + insets.bottom + 20,
+          bottom: selectionMode ? insets.bottom + 20 : 84 + insets.bottom + 20,
           height: 56,
           paddingHorizontal: 20,
           borderRadius: 18,
@@ -386,25 +498,91 @@ export function ShopsListScreen() {
           shadowOffset: { width: 0, height: 6 },
           elevation: 6,
         }}
-        testID="shops-list-new-shop"
+        testID={
+          selectionMode ? 'shops-list-selection-done' : 'shops-list-new-shop'
+        }
       >
-        <OutlineIcon
-          color="#FFFFFF"
-          shapes={ICON_PLUS}
-          size={20}
-          strokeWidth={2.2}
-        />
+        {selectionMode ? null : (
+          <OutlineIcon
+            color="#FFFFFF"
+            shapes={ICON_PLUS}
+            size={20}
+            strokeWidth={2.2}
+          />
+        )}
         <Text style={{ fontSize: 15, fontWeight: '700', color: '#FFFFFF' }}>
-          New shop
+          {selectionMode ? `Done · ${selectedIds.size} selected` : 'New shop'}
         </Text>
       </Pressable>
 
-      <AdminBottomNav
-        active="Shops"
-        bottomInset={insets.bottom}
-        onHomePress={() => navigation.navigate('Home')}
-        onShopsPress={() => {}}
-      />
+      {selectionMode ? null : (
+        <AdminBottomNav
+          active="Shops"
+          bottomInset={insets.bottom}
+          onHomePress={() => navigation.navigate('Home')}
+          onBeatsPress={() => navigation.navigate('BeatPlansList')}
+          onShopsPress={() => {}}
+        />
+      )}
+
+      <Modal
+        animationType="slide"
+        onRequestClose={() => setBeatPlanPickerOpen(false)}
+        transparent
+        visible={beatPlanPickerOpen}
+      >
+        <Pressable
+          onPress={() => setBeatPlanPickerOpen(false)}
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(20,26,38,0.4)',
+            justifyContent: 'flex-end',
+          }}
+        >
+          <Pressable
+            onPress={(event) => event.stopPropagation()}
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              maxHeight: '70%',
+              paddingBottom: 20,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 16,
+                fontWeight: '700',
+                color: INK,
+                padding: 16,
+              }}
+            >
+              Filter by beat plan
+            </Text>
+            <FlatList
+              data={[{ id: '', name: 'All beats' }, ...beatPlanOptions]}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <Pressable
+                  onPress={() => {
+                    setSelectedBeatPlan(item.id ? item : null);
+                    setBeatPlanPickerOpen(false);
+                  }}
+                  style={{
+                    paddingHorizontal: 16,
+                    paddingVertical: 14,
+                    borderTopWidth: 1,
+                    borderTopColor: '#ECEFF4',
+                  }}
+                  testID={`shops-list-beat-filter-option-${item.id || 'all'}`}
+                >
+                  <Text style={{ fontSize: 15, color: INK }}>{item.name}</Text>
+                </Pressable>
+              )}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }

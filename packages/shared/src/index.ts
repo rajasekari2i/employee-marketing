@@ -81,3 +81,14 @@ export type {
   UpdateShopInput,
   ListShopsQuery,
 } from './shops.schema';
+
+export {
+  createBeatPlanSchema,
+  updateBeatPlanSchema,
+  listBeatPlansQuerySchema,
+} from './beat-plans.schema';
+export type {
+  CreateBeatPlanInput,
+  UpdateBeatPlanInput,
+  ListBeatPlansQuery,
+} from './beat-plans.schema';
