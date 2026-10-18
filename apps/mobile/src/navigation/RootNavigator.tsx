@@ -6,6 +6,9 @@ import type { RoleKey, UserStatus } from '@field-sales/shared';
 
 import { HomeScreen } from '../features/admin/HomeScreen';
 import { ProfileScreen } from '../features/admin/ProfileScreen';
+import { ShopFormScreen } from '../features/admin/ShopFormScreen';
+import { ShopsListScreen } from '../features/admin/ShopsListScreen';
+import type { ShopSummaryForEdit } from '../features/admin/ShopsListScreen';
 import { UserFormScreen } from '../features/admin/UserFormScreen';
 import { UsersListScreen } from '../features/admin/UsersListScreen';
 import { ChangePasswordScreen } from '../features/auth/ChangePasswordScreen';
@@ -76,6 +79,10 @@ export type AdminStackParamList = {
   ChangePassword: undefined;
   UsersList: undefined;
   UserForm: { user?: UserSummaryForEdit } | undefined;
+  /** 002-shops-crud, PRD §4 screen 4.8. */
+  ShopsList: undefined;
+  /** 002-shops-crud, PRD §4 screen 4.9. `undefined` means "create a new shop," same convention as `UserForm` above. */
+  ShopForm: { shop?: ShopSummaryForEdit } | undefined;
 };
 
 export type ComingSoonStackParamList = {
@@ -144,6 +151,16 @@ function AdminNavigator() {
       <AdminStack.Screen
         name="UserForm"
         component={UserFormScreen}
+        options={{ headerShown: false }}
+      />
+      <AdminStack.Screen
+        name="ShopsList"
+        component={ShopsListScreen}
+        options={{ headerShown: false }}
+      />
+      <AdminStack.Screen
+        name="ShopForm"
+        component={ShopFormScreen}
         options={{ headerShown: false }}
       />
     </AdminStack.Navigator>

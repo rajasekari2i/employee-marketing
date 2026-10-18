@@ -36,6 +36,13 @@ export const TENANT_MODELS = new Set<string>([
   // escape. See the sibling RLS migration
   // (`<timestamp>_rls_user_salary_rate/migration.sql`) for Layer 2.
   'UserSalaryRate',
+  // 002-shops-crud: all three new tenant tables, same reasoning as
+  // UserSalaryRate above — registered the moment a real writer
+  // (ShopsService) exists for them. See the sibling RLS migration
+  // (`<timestamp>_rls_shops/migration.sql`) for Layer 2.
+  'Shop',
+  'ShopPhoto',
+  'ShopPinChange',
 ]);
 
 /** Operations whose `where` clause must be narrowed to the tenant. */

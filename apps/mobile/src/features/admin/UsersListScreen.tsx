@@ -446,6 +446,7 @@ export function UsersListScreen() {
         active={null}
         bottomInset={insets.bottom}
         onHomePress={() => navigation.goBack()}
+        onShopsPress={() => navigation.navigate('ShopsList')}
       />
     </View>
   );

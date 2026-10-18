@@ -12,6 +12,10 @@ export {
   userStatusSchema,
   CompanyStatus,
   companyStatusSchema,
+  LocationSource,
+  locationSourceSchema,
+  LocationStatus,
+  locationStatusSchema,
 } from './enums';
 
 export { ERROR_CODES, ERROR_STATUS, ERROR_TITLES, AppError } from './errors';
@@ -65,3 +69,15 @@ export type {
   SalaryRateInput,
   ListUsersQuery,
 } from './users.schema';
+
+export {
+  createShopSchema,
+  updateShopSchema,
+  listShopsQuerySchema,
+} from './shops.schema';
+export type {
+  ShopLocationInput,
+  CreateShopInput,
+  UpdateShopInput,
+  ListShopsQuery,
+} from './shops.schema';

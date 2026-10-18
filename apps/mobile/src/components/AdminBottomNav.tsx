@@ -70,11 +70,14 @@ function NavItem({
 export function AdminBottomNav({
   active,
   onHomePress,
+  onShopsPress,
   bottomInset = 0,
 }: {
   /** `null` when the current screen isn't one of these 4 (e.g. Profile). */
   active: AdminBottomNavTab | null;
   onHomePress: () => void;
+  /** 002-shops-crud: navigates to the shop directory. Defaults to the "coming soon" alert for any screen that hasn't been updated to pass this yet. */
+  onShopsPress?: () => void;
   bottomInset?: number;
 }) {
   return (
@@ -114,7 +117,7 @@ export function AdminBottomNav({
         active={active === 'Shops'}
         icon={ICON_SHOPS}
         label="Shops"
-        onPress={() => comingSoon('Shops')}
+        onPress={onShopsPress ?? (() => comingSoon('Shops'))}
       />
     </View>
   );

@@ -33,6 +33,17 @@
       android:theme="@style/AppTheme"
       android:usesCleartextTraffic="${usesCleartextTraffic}"
       android:supportsRtl="true">
+      <!-- 002-shops-crud, research.md §2: react-native-maps' Google Maps
+           provider reads its API key from this meta-data tag, not from JS.
+           "@string/GOOGLE_MAPS_API_KEY" is auto-generated per build flavor
+           by react-native-config's dotenv.gradle (build.gradle) from each
+           .env.<flavor> file's GOOGLE_MAPS_API_KEY value — empty for the
+           dev flavor until a real key is supplied, so map tiles won't
+           render on a dev build until then (map tiles only; the rest of
+           the shop form still works). -->
+      <meta-data
+        android:name="com.google.android.geo.API_KEY"
+        android:value="@string/GOOGLE_MAPS_API_KEY" />
       <activity
         android:name=".MainActivity"
         android:label="@string/APP_NAME"

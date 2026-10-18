@@ -161,6 +161,48 @@ export class FilesService {
     buffer: Buffer,
     declaredMimeType: string,
   ): Promise<FileObject> {
+    return this.processAndStore(
+      companyId,
+      uploadedBy,
+      buffer,
+      declaredMimeType,
+      'USER_AVATAR',
+    );
+  }
+
+  /**
+   * 002-shops-crud: `POST /shops/:id/photos`. Same pipeline as
+   * `uploadAvatar` (validate, strip/resize/WebP-encode, hash/dedupe), just
+   * tagged `kind: 'SHOP_PHOTO'` instead — see {@link processAndStore}.
+   */
+  async uploadShopPhoto(
+    companyId: string,
+    uploadedBy: string,
+    buffer: Buffer,
+    declaredMimeType: string,
+  ): Promise<FileObject> {
+    return this.processAndStore(
+      companyId,
+      uploadedBy,
+      buffer,
+      declaredMimeType,
+      'SHOP_PHOTO',
+    );
+  }
+
+  /**
+   * The shared image pipeline `uploadAvatar`/`uploadShopPhoto` both call —
+   * extracted (002-shops-crud) so a second photo-accepting entity didn't
+   * mean copying ~70 lines of validate/resize/hash/dedupe logic. Behavior
+   * for `uploadAvatar`'s existing `'USER_AVATAR'` callers is unchanged.
+   */
+  private async processAndStore(
+    companyId: string | null,
+    uploadedBy: string,
+    buffer: Buffer,
+    declaredMimeType: string,
+    kind: 'USER_AVATAR' | 'SHOP_PHOTO',
+  ): Promise<FileObject> {
     if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
       throw new AppError('VALIDATION_FAILED', 'Empty upload.');
     }
@@ -247,7 +289,7 @@ export class FilesService {
       // same grouping `User` rows already use for a `null` companyId — no
       // special-casing needed beyond the RLS session variable above.
       const existing = await tx.fileObject.findFirst({
-        where: { companyId, kind: 'USER_AVATAR', sha256 },
+        where: { companyId, kind, sha256 },
       });
       if (existing) {
         return existing;
@@ -268,7 +310,7 @@ export class FilesService {
         data: {
           id,
           companyId,
-          kind: 'USER_AVATAR',
+          kind,
           storageKey,
           // The stored/served bytes are always the processed WebP output,
           // regardless of what format was uploaded — so this is always

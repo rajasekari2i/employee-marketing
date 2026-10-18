@@ -21,7 +21,6 @@ import {
 import { clearSession, getSession } from '../../lib/secureSession';
 import type { AdminStackParamList } from '../../navigation/RootNavigator';
 import {
-  AMBER,
   BG,
   BLUE,
   BORDER,
@@ -68,6 +67,11 @@ interface MeResponse {
 
 interface UsersListResponse {
   items: Array<{ status: UserStatus }>;
+  nextCursor: string | null;
+}
+
+interface ShopsListResponse {
+  items: Array<{ pinStatus: 'NONE' | 'APPROVED' }>;
   nextCursor: string | null;
 }
 
@@ -160,6 +164,10 @@ export function HomeScreen() {
     active: number;
     inactive: number;
   } | null>(null);
+  const [shopCounts, setShopCounts] = useState<{
+    total: number;
+    withoutPin: number;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -199,6 +207,23 @@ export function HomeScreen() {
       })
       .catch(() => {
         // Leave userCounts null — the tile falls back to a neutral subtitle.
+      });
+
+    // Best-effort — the "Shops" tile's count, same posture as userCounts
+    // above (up to 100 shops, counted client-side, no dedicated count
+    // endpoint).
+    void apiRequest<ShopsListResponse>('/shops?limit=100')
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+        const withoutPin = result.items.filter(
+          (s) => s.pinStatus === 'NONE',
+        ).length;
+        setShopCounts({ total: result.items.length, withoutPin });
+      })
+      .catch(() => {
+        // Leave shopCounts null — the tile falls back to a neutral subtitle.
       });
 
     return () => {
@@ -245,6 +270,10 @@ export function HomeScreen() {
 
   const usersSubtitle = userCounts
     ? `${userCounts.active} active · ${userCounts.inactive} inactive`
+    : 'View all';
+
+  const shopsSubtitle = shopCounts
+    ? `${shopCounts.total} shops · ${shopCounts.withoutPin} without pin`
     : 'View all';
 
   return (
@@ -370,9 +399,8 @@ export function HomeScreen() {
           />
           <Tile
             icon={ICON_SHOPS}
-            onPress={() => comingSoon('Shops')}
-            subtitle="Coming soon"
-            subtitleColor={AMBER}
+            onPress={() => navigation.navigate('ShopsList')}
+            subtitle={shopsSubtitle}
             title="Shops"
           />
           <Tile
@@ -461,6 +489,7 @@ export function HomeScreen() {
         active="Home"
         bottomInset={insets.bottom}
         onHomePress={() => {}}
+        onShopsPress={() => navigation.navigate('ShopsList')}
       />
 
       <Modal

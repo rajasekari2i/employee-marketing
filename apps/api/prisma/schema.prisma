@@ -33,9 +33,30 @@ enum RoleKey {
   EMPLOYEE
 }
 
-// PhotoKind.SHOP is added later by a different slice — do NOT add it here.
+// 002-shops-crud added SHOP_PHOTO (data-model.md Enums).
 enum PhotoKind {
   USER_AVATAR
+  SHOP_PHOTO
+}
+
+// 002-shops-crud (data-model.md Enums). Deliberately missing the full
+// architecture model's PENDING/GPS (LocationSource/LocationStatus) and
+// REJECTED (PinChangeStatus) variants — none are reachable from this
+// feature; the executive's first-visit pin-capture flow (a later slice)
+// can add them additively when it needs them.
+enum LocationSource {
+  MAP_SEARCH
+  MANUAL_DRAG
+}
+
+enum LocationStatus {
+  NONE
+  APPROVED
+}
+
+enum PinChangeStatus {
+  REQUESTED
+  DECIDED
 }
 
 // ---------------------------------------------------------------------------
@@ -225,6 +246,8 @@ model FileObject {
   createdAt  DateTime @default(now()) @map("created_at")
 
   user User?
+  // 002-shops-crud: the reverse side of ShopPhoto.fileId.
+  shopPhotos ShopPhoto[]
 
   @@index([companyId, kind])
   @@map("file_objects")
@@ -260,4 +283,105 @@ model AuditEvent {
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("audit_events")
+}
+
+// ---------------------------------------------------------------------------
+// Shops (002-shops-crud)
+// ---------------------------------------------------------------------------
+
+// data-model.md's Shop entity. Deliberately omits the full architecture
+// model's beatPlanShops/stops relations, createdByRole/needsReview, and
+// formattedAddress/placeId — none are reachable from this feature
+// (research.md §1: BeatPlan doesn't exist yet; §2: no Places result-caching
+// in this pass).
+model Shop {
+  id        String @id @default(uuid())
+  companyId String @map("company_id")
+
+  shopCode String @map("shop_code")
+
+  name      String
+  ownerName String? @map("owner_name")
+  phone     String?
+
+  addressLine1 String? @map("address_line1")
+  addressLine2 String? @map("address_line2")
+  city         String?
+  state        String?
+  postalCode   String? @map("postal_code")
+
+  latitude       Decimal?        @db.Decimal(9, 6)
+  longitude      Decimal?        @db.Decimal(9, 6)
+  locationSource LocationSource? @map("location_source")
+  locationStatus LocationStatus  @default(NONE) @map("location_status")
+
+  locationCapturedAt DateTime? @map("location_captured_at")
+  locationCapturedBy String?   @map("location_captured_by")
+  locationVerifiedAt DateTime? @map("location_verified_at")
+  locationVerifiedBy String?   @map("location_verified_by")
+
+  // Reserved for the future nearby-shops query (Architecture §4's
+  // bounding-box/geohash indexes) — not user-facing in this feature.
+  geohash String?
+
+  // null = use the company-wide default (FR-007).
+  verificationRadiusMeters Int? @map("verification_radius_meters")
+
+  isActive Boolean @default(true) @map("is_active")
+
+  photos     ShopPhoto[]
+  pinChanges ShopPinChange[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([companyId, shopCode])
+  @@index([companyId, isActive])
+  @@index([companyId, locationStatus])
+  @@map("shops")
+}
+
+model ShopPhoto {
+  id        String @id @default(uuid())
+  companyId String @map("company_id")
+
+  shopId String @map("shop_id")
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  fileId String     @map("file_id")
+  file   FileObject @relation(fields: [fileId], references: [id])
+
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([companyId, shopId, sortOrder])
+  @@map("shop_photos")
+}
+
+// Append-only coordinate-correction audit (BUS-17; research.md §3). A row
+// is only ever written when an edit changes the coordinates of a shop
+// whose locationStatus is already APPROVED — a shop's first pin (NONE ->
+// APPROVED) is a direct capture with no row here.
+model ShopPinChange {
+  id        String @id @default(uuid())
+  companyId String @map("company_id")
+
+  shopId String @map("shop_id")
+  shop   Shop   @relation(fields: [shopId], references: [id])
+
+  status PinChangeStatus @default(REQUESTED)
+
+  fromLatitude  Decimal? @db.Decimal(9, 6) @map("from_latitude")
+  fromLongitude Decimal? @db.Decimal(9, 6) @map("from_longitude")
+  toLatitude    Decimal  @db.Decimal(9, 6) @map("to_latitude")
+  toLongitude   Decimal  @db.Decimal(9, 6) @map("to_longitude")
+  source        LocationSource
+
+  requestedBy String   @map("requested_by")
+  requestedAt DateTime @default(now()) @map("requested_at")
+  decidedBy   String?  @map("decided_by")
+  decidedAt   DateTime? @map("decided_at")
+
+  @@index([companyId, shopId, status])
+  @@map("shop_pin_changes")
 }

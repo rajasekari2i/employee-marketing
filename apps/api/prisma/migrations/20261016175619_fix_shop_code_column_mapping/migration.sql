@@ -1,0 +1,12 @@
+-- Fixes a gap found during quickstart verification (002-shops-crud): every
+-- other multi-word column on "shops" got its @map("snake_case") per the
+-- coding standard, but `shopCode` was missed, leaving the live column
+-- literally named "shopCode" (quoted mixed-case) instead of "shop_code".
+-- Not a functional bug for the app itself (Prisma always went through the
+-- model field name either way), but it breaks the "snake_case in Postgres"
+-- convention every other table in this schema follows, and any future
+-- hand-written SQL (RLS policies, reports) against this table would silently
+-- need to double-quote the mixed-case name to match. A rename, not a
+-- drop+add, so the 2 rows already written by quickstart verification keep
+-- their data.
+ALTER TABLE "shops" RENAME COLUMN "shopCode" TO "shop_code";

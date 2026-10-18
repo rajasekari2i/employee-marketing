@@ -60,3 +60,39 @@ export const companyStatusSchema = z.enum([
   CompanyStatus.ACTIVE,
   CompanyStatus.SUSPENDED,
 ]);
+
+/**
+ * `apps/api/prisma/schema.prisma`'s `LocationSource` enum (002-shops-crud).
+ * Deliberately missing the full architecture model's `GPS` variant — not
+ * reachable from this feature (data-model.md Enums).
+ */
+export const LocationSource = {
+  MAP_SEARCH: 'MAP_SEARCH',
+  MANUAL_DRAG: 'MANUAL_DRAG',
+} as const;
+
+export type LocationSource =
+  (typeof LocationSource)[keyof typeof LocationSource];
+
+export const locationSourceSchema = z.enum([
+  LocationSource.MAP_SEARCH,
+  LocationSource.MANUAL_DRAG,
+]);
+
+/**
+ * `apps/api/prisma/schema.prisma`'s `LocationStatus` enum (002-shops-crud).
+ * Deliberately missing the full architecture model's `PENDING` variant —
+ * not reachable from this feature (data-model.md Enums).
+ */
+export const LocationStatus = {
+  NONE: 'NONE',
+  APPROVED: 'APPROVED',
+} as const;
+
+export type LocationStatus =
+  (typeof LocationStatus)[keyof typeof LocationStatus];
+
+export const locationStatusSchema = z.enum([
+  LocationStatus.NONE,
+  LocationStatus.APPROVED,
+]);

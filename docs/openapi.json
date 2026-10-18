@@ -486,6 +486,186 @@
           "users"
         ]
       }
+    },
+    "/shops": {
+      "get": {
+        "operationId": "ShopsController_list",
+        "parameters": [
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "exclusiveMaximum": false,
+              "exclusiveMinimum": false,
+              "default": 20,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "name": "pinStatus",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ALL",
+                "NO_PIN"
+              ]
+            }
+          },
+          {
+            "name": "isActive",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "shops"
+        ]
+      },
+      "post": {
+        "operationId": "ShopsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateShopDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "shops"
+        ]
+      }
+    },
+    "/shops/{id}": {
+      "patch": {
+        "operationId": "ShopsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateShopDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "shops"
+        ]
+      }
+    },
+    "/shops/{id}/photos": {
+      "post": {
+        "operationId": "ShopsController_addPhoto",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "shops"
+        ]
+      }
+    },
+    "/shops/{id}/photos/{photoId}": {
+      "delete": {
+        "operationId": "ShopsController_removePhoto",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "photoId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "shops"
+        ]
+      }
     }
   },
   "info": {
@@ -873,6 +1053,189 @@
           "halfDayRate",
           "rateEffectiveFrom"
         ]
+      },
+      "CreateShopDto": {
+        "type": "object",
+        "properties": {
+          "shopCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "isActive": {
+            "type": "boolean",
+            "default": true
+          },
+          "ownerName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "phone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "addressLine1": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "addressLine2": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "city": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "state": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "postalCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16
+          },
+          "verificationRadiusMeters": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "location": {
+            "type": "object",
+            "properties": {
+              "latitude": {
+                "type": "number",
+                "minimum": -90,
+                "exclusiveMinimum": false,
+                "maximum": 90,
+                "exclusiveMaximum": false
+              },
+              "longitude": {
+                "type": "number",
+                "minimum": -180,
+                "exclusiveMinimum": false,
+                "maximum": 180,
+                "exclusiveMaximum": false
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "MAP_SEARCH",
+                  "MANUAL_DRAG"
+                ]
+              }
+            },
+            "required": [
+              "latitude",
+              "longitude",
+              "source"
+            ]
+          }
+        },
+        "required": [
+          "shopCode",
+          "name"
+        ]
+      },
+      "UpdateShopDto": {
+        "type": "object",
+        "properties": {
+          "shopCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "ownerName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "phone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "addressLine1": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "addressLine2": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "city": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "state": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "postalCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16
+          },
+          "verificationRadiusMeters": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "location": {
+            "type": "object",
+            "properties": {
+              "latitude": {
+                "type": "number",
+                "minimum": -90,
+                "exclusiveMinimum": false,
+                "maximum": 90,
+                "exclusiveMaximum": false
+              },
+              "longitude": {
+                "type": "number",
+                "minimum": -180,
+                "exclusiveMinimum": false,
+                "maximum": 180,
+                "exclusiveMaximum": false
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "MAP_SEARCH",
+                  "MANUAL_DRAG"
+                ]
+              }
+            },
+            "required": [
+              "latitude",
+              "longitude",
+              "source"
+            ]
+          }
+        }
       }
     }
   }

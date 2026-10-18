@@ -23,6 +23,7 @@ import { CompaniesModule } from './modules/companies/companies.module';
 import { MeModule } from './modules/me/me.module';
 import { FilesModule } from './modules/files/files.module';
 import { UsersModule } from './modules/users/users.module';
+import { ShopsModule } from './modules/shops/shops.module';
 
 @Module({
   imports: [
@@ -50,6 +51,10 @@ import { UsersModule } from './modules/users/users.module';
     // /users/:id/salary-rates` — the first ordinary (non-`@SkipTenant()`)
     // module to genuinely exercise Layer-1 tenant scoping end-to-end.
     UsersModule,
+    // 002-shops-crud: `GET/POST /shops`, `PATCH /shops/:id`, `POST/DELETE
+    // /shops/:id/photos` — the shop directory/form's API, following
+    // UsersModule's exact tenant-scoping shape.
+    ShopsModule,
     // Establishes one AsyncLocalStorage-backed context per request so the
     // tenant isolation layer (Architecture §5 / CLAUDE.md Constitution
     // rule 2) — the Prisma extension in src/infra/prisma/tenant.extension.ts
