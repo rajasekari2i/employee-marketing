@@ -48,6 +48,17 @@ export const ERROR_CODES = [
   // specific rather than "something went wrong".
   'BEAT_DAY_ENDED',
   'BEAT_NOT_STARTED',
+  // 006-visit-outcomes, contracts/visits.md. The four states the visit
+  // critical path can refuse. STOP_ALREADY_COMPLETED is the user-facing half
+  // of the @@unique([stopId]) constraint that makes "one outcome per stop" a
+  // database fact; SHOP_PIN_REQUIRED enforces BUS-09 (no outcome at a shop
+  // with no approved coordinates). PIN_ACCURACY_TOO_LOW is the ONE place in
+  // the product where accuracy blocks rather than merely flags — a bad pin
+  // poisons every future visit measured against it.
+  'STOP_ALREADY_COMPLETED',
+  'SHOP_PIN_REQUIRED',
+  'PIN_ACCURACY_TOO_LOW',
+  'PIN_ALREADY_SET',
   'IDEMPOTENCY_KEY_REUSED',
   'OTP_INCORRECT',
   'OTP_EXPIRED',
@@ -86,6 +97,10 @@ export const ERROR_STATUS: Readonly<Record<ErrorCode, number>> = {
   SYSTEM_REASON_IMMUTABLE: 409,
   BEAT_DAY_ENDED: 409,
   BEAT_NOT_STARTED: 409,
+  STOP_ALREADY_COMPLETED: 409,
+  SHOP_PIN_REQUIRED: 409,
+  PIN_ACCURACY_TOO_LOW: 409,
+  PIN_ALREADY_SET: 409,
   OTP_INCORRECT: 400,
   OTP_EXPIRED: 410,
   OTP_ATTEMPTS_EXHAUSTED: 429,
@@ -114,6 +129,10 @@ export const ERROR_TITLES: Readonly<Record<ErrorCode, string>> = {
   SYSTEM_REASON_IMMUTABLE: 'The "Other" reason cannot be changed',
   BEAT_DAY_ENDED: 'Beat day already ended',
   BEAT_NOT_STARTED: 'Beat day not started',
+  STOP_ALREADY_COMPLETED: 'Outcome already recorded',
+  SHOP_PIN_REQUIRED: 'Shop location required',
+  PIN_ACCURACY_TOO_LOW: 'Location accuracy too low',
+  PIN_ALREADY_SET: 'Shop location already set',
   OTP_INCORRECT: 'Incorrect OTP',
   OTP_EXPIRED: 'OTP expired',
   OTP_ATTEMPTS_EXHAUSTED: 'OTP attempts exhausted',

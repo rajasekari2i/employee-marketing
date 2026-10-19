@@ -42,16 +42,27 @@ class ReorderBrandsDto extends createZodDto(reorderSchema) {}
 @ApiTags('brands')
 @Controller('brands')
 @UseGuards(RolesGuard)
-@Roles('COMPANY_ADMIN')
+@Roles('COMPANY_ADMIN', 'MARKETING_EXECUTIVE')
 export class BrandsController {
   constructor(private readonly brandsService: BrandsService) {}
 
+  /**
+   * 006-visit-outcomes widened this to the Marketing Executive, who needs it
+   * to populate the outcome screens. The executive receives ACTIVE entries
+   * only; the Company Admin's response is unchanged.
+   *
+   * Only this GET is shared — every mutating route below re-asserts
+   * `@Roles('COMPANY_ADMIN')`, so widening the class-level role cannot
+   * accidentally let an executive create, reorder or deactivate a master.
+   */
   @Get()
   list(@Req() request: AuthenticatedRequest) {
-    return this.brandsService.list(this.requireCompanyId(request));
+    const isExecutive = request.user?.role === 'MARKETING_EXECUTIVE';
+    return this.brandsService.list(this.requireCompanyId(request), isExecutive);
   }
 
   @Post()
+  @Roles('COMPANY_ADMIN')
   @UseGuards(RequireIdempotencyKeyGuard)
   @Audited('brand.create', 'Brand')
   create(@Req() request: AuthenticatedRequest, @Body() body: CreateBrandDto) {
@@ -65,6 +76,7 @@ export class BrandsController {
    * (contracts/masters.md implementation note).
    */
   @Patch('order')
+  @Roles('COMPANY_ADMIN')
   @UseGuards(RequireIdempotencyKeyGuard)
   @Audited('brand.reorder', 'Brand')
   reorder(
@@ -75,6 +87,7 @@ export class BrandsController {
   }
 
   @Patch(':id')
+  @Roles('COMPANY_ADMIN')
   @UseGuards(RequireIdempotencyKeyGuard)
   @Audited('brand.update', 'Brand')
   update(

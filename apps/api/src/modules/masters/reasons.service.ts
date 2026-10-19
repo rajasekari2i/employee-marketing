@@ -78,10 +78,15 @@ export class ReasonsService {
    *
    * Every company always returns at least this one row.
    */
-  async list(companyId: string): Promise<ReasonListResult> {
+  async list(companyId: string, activeOnly = false): Promise<ReasonListResult> {
     const tx = await this.scopeToCaller(companyId);
 
     const items = await tx.reasonMessage.findMany({
+      // 006-visit-outcomes: ACTIVE reasons only for a Marketing Executive
+      // (FR-013), same reasoning as BrandsService.list. The system "Other"
+      // row is always active, so it survives this filter and still sorts
+      // last via the isSystem ordering below.
+      ...(activeOnly ? { where: { isActive: true } } : {}),
       orderBy: [{ isSystem: 'asc' }, { displayOrder: 'asc' }],
       select: this.rowSelect,
     });

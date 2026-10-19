@@ -43,7 +43,7 @@ const positionFields = {
 };
 
 /** `POST /assignments/:id/start` request body (contracts/assignments.md). */
-export const startBeatSchema = z.object(positionFields);
+export const startBeatSchema = z.object(positionFields).strict();
 
 export type StartBeatInput = z.infer<typeof startBeatSchema>;
 
@@ -53,6 +53,6 @@ export type StartBeatInput = z.infer<typeof startBeatSchema>;
  * There is no `note` field: board 1.3's end confirmation offers only "Keep
  * going" and "End beat", so nothing in the product can produce one.
  */
-export const endBeatSchema = z.object(positionFields);
+export const endBeatSchema = z.object(positionFields).strict();
 
 export type EndBeatInput = z.infer<typeof endBeatSchema>;

@@ -47,11 +47,19 @@ enum PhotoKind {
 enum LocationSource {
   MAP_SEARCH
   MANUAL_DRAG
+  // 006-visit-outcomes: how an executive's first-visit pin capture obtains
+  // the point. 002-shops-crud's comment above named this flow as the one
+  // that would add it.
+  GPS
 }
 
 enum LocationStatus {
   NONE
   APPROVED
+  // 006-visit-outcomes: where an executive-captured pin sits when the
+  // company does not auto-approve (FR-033). An outcome cannot be recorded
+  // at a shop in this state.
+  PENDING_VERIFICATION
 }
 
 enum PinChangeStatus {
@@ -90,6 +98,39 @@ enum StopSource {
   PLAN
   EXEC_EXTRA
   MANAGER_EXTRA
+}
+
+// 006-visit-outcomes (data-model.md).
+enum VisitOutcome {
+  ORDER
+  NO_ORDER
+}
+
+// Omits the architecture's decided states (accepted / revisit-requested) —
+// nothing here writes or reads them; the manager review slice adds them.
+enum ReviewStatus {
+  NOT_REQUIRED
+  PENDING_REVIEW
+}
+
+enum DeliveryStatus {
+  TO_DELIVER
+  DELIVERED
+}
+
+// Declares its full set even though MOCK_LOCATION_SUSPECTED has NO PRODUCER:
+// the installed geolocation library does not expose Android's
+// isFromMockProvider() signal (research.md §5), so a mocked position is
+// currently indistinguishable from a real one. Declared rather than omitted
+// because the flag-evaluation code reads the whole set and the manager
+// review slice renders it — the gap is recorded, not hidden. Closing it
+// needs a small native call or a library swap; neither changes this schema.
+enum VisitFlag {
+  LOW_ACCURACY
+  STALE_LOCATION
+  MOCK_LOCATION_SUSPECTED
+  OFFLINE_SUBMISSION
+  EXCEED_RANGE
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +236,8 @@ model User {
   assignedBeatPlans BeatPlan[]
   // 005-executive-dashboard: the reverse side of DailyAssignment.executiveId.
   assignments       DailyAssignment[]
+  // 006-visit-outcomes: the reverse side of Visit.executiveId.
+  visits            Visit[]
 
   @@unique([companyId, username])
   @@index([companyId, status])
@@ -352,6 +395,13 @@ model Shop {
   locationSource LocationSource? @map("location_source")
   locationStatus LocationStatus  @default(NONE) @map("location_status")
 
+  // 006-visit-outcomes (FR-032): a pin captured by an executive records the
+  // accuracy of the reading it came from. 002-shops-crud had no need for it
+  // — an admin setting a pin by map search has no device accuracy — but an
+  // executive's GPS capture does, and a manager reviewing a pin needs to
+  // know how good the fix was.
+  locationAccuracyMeters Int? @map("location_accuracy_meters")
+
   locationCapturedAt DateTime? @map("location_captured_at")
   locationCapturedBy String?   @map("location_captured_by")
   locationVerifiedAt DateTime? @map("location_verified_at")
@@ -375,6 +425,8 @@ model Shop {
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+  visits    Visit[]
+  orders    Order[]
 
   @@unique([companyId, shopCode])
   @@index([companyId, isActive])
@@ -517,6 +569,9 @@ model Brand {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  // 006-visit-outcomes: the relation 004-brands-reasons-crud deferred by name.
+  orderLines OrderLine[]
+
   @@unique([companyId, label])
   @@index([companyId, isActive, displayOrder])
   @@map("brands")
@@ -552,6 +607,9 @@ model ReasonMessage {
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+
+  // 006-visit-outcomes: the relation 004-brands-reasons-crud deferred by name.
+  visits Visit[]
 
   @@unique([companyId, label])
   @@index([companyId, isActive, displayOrder])
@@ -643,14 +701,150 @@ model AssignmentStop {
 
   effectiveRadiusMeters Int @map("effective_radius_meters")
 
+  // 006-visit-outcomes (research.md §4): the shop's approved coordinate,
+  // FROZEN here so a visit is measured against the location in force when it
+  // was RECORDED, not when it was received. Without this, an offline visit
+  // synced days later would be re-measured against whatever pin a manager
+  // had since approved. Populated at route creation, and again at pin
+  // capture for a shop that started without one. Null = no approved pin yet,
+  // so no outcome can be recorded at that stop.
+  shopLatitude  Decimal? @map("shop_latitude") @db.Decimal(9, 6)
+  shopLongitude Decimal? @map("shop_longitude") @db.Decimal(9, 6)
+
   // Deliberately tighter than the architecture's
   // @@unique([assignmentId, shopId, sequence]): that three-column form would
   // let the same shop appear twice on one day at two sequence numbers, which
   // contradicts BUS-08 ("at most one completed primary outcome per shop per
   // executive per day"). Two columns make the duplicate unrepresentable, and
   // match the @@unique([beatPlanId, shopId]) precedent on BeatPlanShop.
+  visit Visit?
+
   @@unique([assignmentId, shopId])
   @@index([companyId, assignmentId, status])
   @@index([companyId, shopId])
   @@map("assignment_stops")
+}
+
+// ---------------------------------------------------------------------------
+// Visits & orders (006-visit-outcomes)
+// ---------------------------------------------------------------------------
+
+// One completed interaction at one shop on one day. IMMUTABLE once written —
+// there is no update or delete path anywhere in the API, which is how
+// "a submitted visit cannot be edited" (FR-016) is enforced.
+//
+// Seven fields here are stored on every visit and NEVER selected by an
+// executive-facing query (data-model.md): shopLatitude, shopLongitude,
+// effectiveRadiusMeters, distanceMeters, isExceedRange, flags, reviewStatus.
+// They exist for the manager review slice and the reports. The guarantee is
+// the absence of these names from the executive endpoints' select lists — a
+// field never loaded cannot leak through a later refactor.
+model Visit {
+  id        String @id @default(uuid())
+  companyId String @map("company_id")
+
+  assignmentId String         @map("assignment_id")
+  stopId       String         @map("stop_id")
+  stop         AssignmentStop @relation(fields: [stopId], references: [id])
+  shopId       String         @map("shop_id")
+  shop         Shop           @relation(fields: [shopId], references: [id])
+  executiveId  String         @map("executive_id")
+  executive    User           @relation(fields: [executiveId], references: [id])
+
+  outcome     VisitOutcome
+  sampleShown Boolean      @map("sample_shown")
+
+  reasonId    String?        @map("reason_id")
+  reason      ReasonMessage? @relation(fields: [reasonId], references: [id])
+  // Snapshot — renaming a reason later never rewrites recorded history.
+  reasonLabel String?        @map("reason_label")
+  // Already on the log redaction list (CLAUDE.md rule 9).
+  reasonText  String?        @map("reason_text")
+
+  // The executive's own position, as the device reported it.
+  capturedLatitude  Decimal  @map("captured_latitude") @db.Decimal(9, 6)
+  capturedLongitude Decimal  @map("captured_longitude") @db.Decimal(9, 6)
+  accuracyMeters    Int      @map("accuracy_meters")
+  capturedAt        DateTime @map("captured_at")
+  submittedAt       DateTime @map("submitted_at")
+  // The SERVER's clock — the authoritative time. A wrong device clock can
+  // never move when a visit is recorded as having happened.
+  receivedAt        DateTime @default(now()) @map("received_at")
+
+  // Snapshot of what the distance was measured against (research.md §4).
+  shopLatitude          Decimal? @map("shop_latitude") @db.Decimal(9, 6)
+  shopLongitude         Decimal? @map("shop_longitude") @db.Decimal(9, 6)
+  effectiveRadiusMeters Int      @map("effective_radius_meters")
+
+  // Server-computed, always. Never accepted from a client (CLAUDE.md rule 1).
+  distanceMeters Int          @map("distance_meters")
+  isExceedRange  Boolean      @map("is_exceed_range")
+  flags          VisitFlag[]
+  reviewStatus   ReviewStatus @default(NOT_REQUIRED) @map("review_status")
+
+  order Order?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // LOAD-BEARING: makes "exactly one outcome per stop" (FR-006) a database
+  // fact rather than a check two concurrent submissions could both pass. A
+  // manager-granted revisit produces a NEW stop, so it never contends here.
+  @@unique([stopId])
+  @@index([companyId, shopId, receivedAt])
+  @@index([companyId, assignmentId])
+  @@index([companyId, reviewStatus])
+  @@map("visits")
+}
+
+// The commercial result of an order outcome. Exists only as part of its
+// visit — the two are created in one transaction, so a visit whose order is
+// missing is unrepresentable (FR-027).
+model Order {
+  id        String @id @default(uuid())
+  companyId String @map("company_id")
+
+  visitId String @unique @map("visit_id")
+  visit   Visit  @relation(fields: [visitId], references: [id], onDelete: Cascade)
+
+  shopId String @map("shop_id")
+  shop   Shop   @relation(fields: [shopId], references: [id])
+
+  // Server-derived from the submitted lines — a client cannot assert a total
+  // that disagrees with its own lines. Stored rather than counted on read
+  // because the manager's list and the reports sort and filter on them.
+  totalQuantity Int @map("total_quantity")
+  brandCount    Int @map("brand_count")
+
+  // Written here; moved to DELIVERED by the manager slice.
+  deliveryStatus DeliveryStatus @default(TO_DELIVER) @map("delivery_status")
+
+  lines OrderLine[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([companyId, shopId])
+  @@index([companyId, deliveryStatus])
+  @@map("orders")
+}
+
+model OrderLine {
+  id        String @id @default(uuid())
+  companyId String @map("company_id")
+
+  orderId String @map("order_id")
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  brandId    String @map("brand_id")
+  brand      Brand  @relation(fields: [brandId], references: [id])
+  // Snapshot (Architecture §9's "snapshots everywhere") — a brand renamed or
+  // retired later never rewrites a recorded order.
+  brandLabel String @map("brand_label")
+
+  quantity Int
+
+  // The database-level backstop for FR-012, so the same brand cannot appear
+  // twice on one order even under a retry.
+  @@unique([orderId, brandId])
+  @@index([companyId, brandId])
+  @@map("order_lines")
 }

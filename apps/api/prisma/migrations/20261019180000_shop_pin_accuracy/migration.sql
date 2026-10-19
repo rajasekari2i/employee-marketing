@@ -1,0 +1,12 @@
+-- 006-visit-outcomes (FR-032): record the accuracy of the reading a shop's
+-- pin was captured from.
+--
+-- 002-shops-crud had no need for this column — a Company Admin setting a pin
+-- by map search or drag has no device accuracy to record. An executive's
+-- first-visit GPS capture does, and a manager reviewing that pin needs to
+-- know how good the fix was, so it is added here rather than retro-fitted
+-- to the shops slice.
+--
+-- Nullable: every shop pinned before this slice has no accuracy to report,
+-- and an admin-set pin still will not.
+ALTER TABLE "shops" ADD COLUMN "location_accuracy_meters" INTEGER;

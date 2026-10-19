@@ -1067,6 +1067,86 @@
           "assignments"
         ]
       }
+    },
+    "/stops/{id}": {
+      "get": {
+        "operationId": "VisitsController_stopDetail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "visits"
+        ]
+      }
+    },
+    "/visits": {
+      "post": {
+        "operationId": "VisitsController_submitVisit",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitVisitDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "visits"
+        ]
+      }
+    },
+    "/shops/{id}/pin": {
+      "post": {
+        "operationId": "VisitsController_capturePin",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CapturePinDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "visits"
+        ]
+      }
     }
   },
   "info": {
@@ -1872,6 +1952,141 @@
           "longitude",
           "accuracyMeters",
           "capturedAt"
+        ]
+      },
+      "SubmitVisitDto": {
+        "type": "object",
+        "properties": {
+          "stopId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sampleShown": {
+            "type": "boolean"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "ORDER",
+              "NO_ORDER"
+            ]
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "brandId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "quantity": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "exclusiveMinimum": false
+                }
+              },
+              "required": [
+                "brandId",
+                "quantity"
+              ]
+            }
+          },
+          "reasonId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reasonText": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 280
+          },
+          "latitude": {
+            "type": "number",
+            "minimum": -90,
+            "exclusiveMinimum": false,
+            "maximum": 90,
+            "exclusiveMaximum": false
+          },
+          "longitude": {
+            "type": "number",
+            "minimum": -180,
+            "exclusiveMinimum": false,
+            "maximum": 180,
+            "exclusiveMaximum": false
+          },
+          "accuracyMeters": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": false
+          },
+          "capturedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "submittedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "isMockLocation": {
+            "type": "boolean"
+          },
+          "fromOfflineQueue": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "stopId",
+          "sampleShown",
+          "outcome",
+          "latitude",
+          "longitude",
+          "accuracyMeters",
+          "capturedAt",
+          "submittedAt"
+        ]
+      },
+      "CapturePinDto": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "minimum": -90,
+            "exclusiveMinimum": false,
+            "maximum": 90,
+            "exclusiveMaximum": false
+          },
+          "longitude": {
+            "type": "number",
+            "minimum": -180,
+            "exclusiveMinimum": false,
+            "maximum": 180,
+            "exclusiveMaximum": false
+          },
+          "accuracyMeters": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": false
+          },
+          "capturedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "GPS",
+              "MAP_SEARCH",
+              "MANUAL_DRAG"
+            ]
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude",
+          "accuracyMeters",
+          "capturedAt",
+          "source"
         ]
       }
     }

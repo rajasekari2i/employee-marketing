@@ -7,6 +7,10 @@ import type { RoleKey, UserStatus } from '@field-sales/shared';
 import { BeatPlanFormScreen } from '../features/admin/BeatPlanFormScreen';
 import { BeatPlansListScreen } from '../features/admin/BeatPlansListScreen';
 import { BrandsReasonsListScreen } from '../features/admin/BrandsReasonsListScreen';
+import { CaptureShopPinScreen } from '../features/executive/CaptureShopPinScreen';
+import { RecordNoOrderScreen } from '../features/executive/RecordNoOrderScreen';
+import { RecordOrderScreen } from '../features/executive/RecordOrderScreen';
+import { ShopVisitScreen } from '../features/executive/ShopVisitScreen';
 import { TodaysBeatScreen } from '../features/executive/TodaysBeatScreen';
 import type { BeatPlanSummaryForEdit } from '../features/admin/BeatPlansListScreen';
 import { HomeScreen } from '../features/admin/HomeScreen';
@@ -122,6 +126,25 @@ export type AdminStackParamList = {
 /** 005-executive-dashboard, PRD §4 screen 1.3. The executive's only built destination so far; the bottom bar's other two tabs are rendered but not yet navigable. */
 export type ExecutiveStackParamList = {
   TodaysBeat: undefined;
+  /** 006-visit-outcomes, PRD §4 screen 1.7. */
+  ShopVisit: { stopId: string };
+  /** PRD §4 screen 2.1. `sampleShown` is carried through from the visit screen, where it is required before either outcome. */
+  RecordOrder: { stopId: string; shopName: string; sampleShown: boolean };
+  /** PRD §4 screen 2.2. */
+  RecordNoOrder: { stopId: string; shopName: string; sampleShown: boolean };
+  /**
+   * PRD §4 screen 1.8 — reached instead of ShopVisit when the shop has no
+   * saved location. `maxAccuracyMeters` is the company's gate, passed in so
+   * the screen can show the verdict without a second round trip.
+   */
+  CaptureShopPin: {
+    stopId: string;
+    shopId: string;
+    shopName: string;
+    shopCode: string;
+    addressLine: string | null;
+    maxAccuracyMeters: number;
+  };
 };
 
 export type ComingSoonStackParamList = {
@@ -240,6 +263,26 @@ function ExecutiveNavigator() {
       <ExecutiveStack.Screen
         name="TodaysBeat"
         component={TodaysBeatScreen}
+        options={{ headerShown: false }}
+      />
+      <ExecutiveStack.Screen
+        name="ShopVisit"
+        component={ShopVisitScreen}
+        options={{ headerShown: false }}
+      />
+      <ExecutiveStack.Screen
+        name="RecordOrder"
+        component={RecordOrderScreen}
+        options={{ headerShown: false }}
+      />
+      <ExecutiveStack.Screen
+        name="RecordNoOrder"
+        component={RecordNoOrderScreen}
+        options={{ headerShown: false }}
+      />
+      <ExecutiveStack.Screen
+        name="CaptureShopPin"
+        component={CaptureShopPinScreen}
         options={{ headerShown: false }}
       />
     </ExecutiveStack.Navigator>

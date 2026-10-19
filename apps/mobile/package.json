@@ -16,6 +16,7 @@
   "dependencies": {
     "@field-sales/shared": "workspace:*",
     "@hookform/resolvers": "^5.9.1",
+    "@react-native-async-storage/async-storage": "^3.1.1",
     "@react-native-community/datetimepicker": "^9.2.1",
     "@react-native-community/geolocation": "^3.4.0",
     "@react-navigation/native": "^7.1.0",

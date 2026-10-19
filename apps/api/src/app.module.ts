@@ -27,6 +27,7 @@ import { ShopsModule } from './modules/shops/shops.module';
 import { BeatPlansModule } from './modules/beat-plans/beat-plans.module';
 import { MastersModule } from './modules/masters/masters.module';
 import { AssignmentsModule } from './modules/assignments/assignments.module';
+import { VisitsModule } from './modules/visits/visits.module';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { AssignmentsModule } from './modules/assignments/assignments.module';
     BeatPlansModule,
     MastersModule,
     AssignmentsModule,
+    VisitsModule,
     // Establishes one AsyncLocalStorage-backed context per request so the
     // tenant isolation layer (Architecture §5 / CLAUDE.md Constitution
     // rule 2) — the Prisma extension in src/infra/prisma/tenant.extension.ts

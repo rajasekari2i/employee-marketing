@@ -100,9 +100,14 @@ async function ensurePermission(): Promise<
   const result = await PermissionsAndroid.request(
     PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
     {
-      title: 'Location needed to start your beat',
+      title: 'Location needed for your beat',
+      // LOAD-BEARING, not cosmetic (FR-021). The confirm-and-submit screen
+      // deliberately says nothing about location (FR-018), so this prompt is
+      // now the ONLY place the app discloses what it does with it. It must
+      // therefore cover recording visits, not just starting and ending the
+      // beat.
       message:
-        'Your location is saved when you start and end the beat, so your visits can be verified.',
+        'Your location is saved when you start and end the beat, and when you record a visit at a shop.',
       buttonPositive: 'Allow',
       buttonNegative: 'Not now',
     },

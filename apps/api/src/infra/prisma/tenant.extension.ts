@@ -64,6 +64,17 @@ export const TENANT_MODELS = new Set<string>([
   // narrowing done in AssignmentsService — never left to this Set.
   'DailyAssignment',
   'AssignmentStop',
+  // 006-visit-outcomes: the three new tenant tables, same reasoning as the
+  // entries above — registered alongside their real writer (VisitsService).
+  // See the sibling RLS migration
+  // (`20261019170018_rls_visits/migration.sql`) for Layer 2.
+  //
+  // As with the 005 entries, this layer scopes by COMPANY only; keeping one
+  // executive out of another's visits is a separate, explicit narrowing done
+  // in VisitsService.
+  'Visit',
+  'Order',
+  'OrderLine',
 ]);
 
 /** Operations whose `where` clause must be narrowed to the tenant. */

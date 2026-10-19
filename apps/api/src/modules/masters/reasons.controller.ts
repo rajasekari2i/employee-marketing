@@ -39,16 +39,30 @@ class ReorderReasonsDto extends createZodDto(reorderSchema) {}
 @ApiTags('reasons')
 @Controller('reasons')
 @UseGuards(RolesGuard)
-@Roles('COMPANY_ADMIN')
+@Roles('COMPANY_ADMIN', 'MARKETING_EXECUTIVE')
 export class ReasonsController {
   constructor(private readonly reasonsService: ReasonsService) {}
 
+  /**
+   * 006-visit-outcomes widened this to the Marketing Executive, who needs it
+   * to populate the outcome screens. The executive receives ACTIVE entries
+   * only; the Company Admin's response is unchanged.
+   *
+   * Only this GET is shared — every mutating route below re-asserts
+   * `@Roles('COMPANY_ADMIN')`, so widening the class-level role cannot
+   * accidentally let an executive create, reorder or deactivate a master.
+   */
   @Get()
   list(@Req() request: AuthenticatedRequest) {
-    return this.reasonsService.list(this.requireCompanyId(request));
+    const isExecutive = request.user?.role === 'MARKETING_EXECUTIVE';
+    return this.reasonsService.list(
+      this.requireCompanyId(request),
+      isExecutive,
+    );
   }
 
   @Post()
+  @Roles('COMPANY_ADMIN')
   @UseGuards(RequireIdempotencyKeyGuard)
   @Audited('reason.create', 'ReasonMessage')
   create(@Req() request: AuthenticatedRequest, @Body() body: CreateReasonDto) {
@@ -57,6 +71,7 @@ export class ReasonsController {
 
   /** MUST stay declared ABOVE `PATCH :id` — see `brands.controller.ts`. */
   @Patch('order')
+  @Roles('COMPANY_ADMIN')
   @UseGuards(RequireIdempotencyKeyGuard)
   @Audited('reason.reorder', 'ReasonMessage')
   reorder(
@@ -67,6 +82,7 @@ export class ReasonsController {
   }
 
   @Patch(':id')
+  @Roles('COMPANY_ADMIN')
   @UseGuards(RequireIdempotencyKeyGuard)
   @Audited('reason.update', 'ReasonMessage')
   update(

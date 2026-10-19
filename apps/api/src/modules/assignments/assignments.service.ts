@@ -9,6 +9,7 @@ import {
 
 import type { TransactionClsStore } from '../../common/interceptors/transaction.interceptor';
 import { CompanyClock } from '../../infra/time/company-clock.service';
+import { haversineMetres } from '../visits/haversine';
 
 /** Own module-level, unextended Prisma client — same established pattern as `beat-plans.service.ts`. */
 const prisma = new PrismaClient();
@@ -35,7 +36,9 @@ export interface StopView {
     id: string;
     name: string;
     addressLine: string | null;
-    pinStatus: 'NONE' | 'APPROVED';
+    // 006-visit-outcomes widened LocationStatus with PENDING_VERIFICATION —
+    // a shop whose pin is captured but not yet approved.
+    pinStatus: 'NONE' | 'APPROVED' | 'PENDING_VERIFICATION';
   };
   previousOutcome: string | null;
 }
@@ -236,7 +239,17 @@ export class AssignmentsService {
           select: {
             sequence: true,
             shopId: true,
-            shop: { select: { verificationRadiusMeters: true } },
+            shop: {
+              select: {
+                verificationRadiusMeters: true,
+                // 006-visit-outcomes (research.md §4): frozen onto the stop
+                // below so a visit is measured against the location in force
+                // when it was RECORDED, not when it was received.
+                latitude: true,
+                longitude: true,
+                locationStatus: true,
+              },
+            },
           },
           orderBy: { sequence: 'asc' },
         },
@@ -278,6 +291,19 @@ export class AssignmentsService {
               // default — never re-resolved when the day is read.
               effectiveRadiusMeters:
                 planShop.shop.verificationRadiusMeters ?? defaultRadius,
+              // 006-visit-outcomes: the coordinate a visit at this stop is
+              // measured against, frozen now. Only an APPROVED pin counts —
+              // a pending one cannot accept an outcome, and a shop with no
+              // pin leaves these null until the executive captures one
+              // (shop-pin.service.ts fills them in then).
+              shopLatitude:
+                planShop.shop.locationStatus === 'APPROVED'
+                  ? planShop.shop.latitude
+                  : null,
+              shopLongitude:
+                planShop.shop.locationStatus === 'APPROVED'
+                  ? planShop.shop.longitude
+                  : null,
             })),
           },
         },
@@ -560,25 +586,4 @@ export class AssignmentsService {
 
     return best?.name ?? null;
   }
-}
-
-/** Straight-line distance in metres. The product's single distance implementation. */
-function haversineMetres(
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number,
-): number {
-  const EARTH_RADIUS_METRES = 6_371_000;
-  const toRadians = (degrees: number): number => (degrees * Math.PI) / 180;
-
-  const dLat = toRadians(lat2 - lat1);
-  const dLng = toRadians(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRadians(lat1)) *
-      Math.cos(toRadians(lat2)) *
-      Math.sin(dLng / 2) ** 2;
-
-  return 2 * EARTH_RADIUS_METRES * Math.asin(Math.sqrt(a));
 }

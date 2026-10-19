@@ -77,10 +77,17 @@ export class BrandsService {
    * ordering — the design distinguishes them by row styling, not by
    * segregating them.
    */
-  async list(companyId: string): Promise<BrandListResult> {
+  async list(companyId: string, activeOnly = false): Promise<BrandListResult> {
     const tx = await this.scopeToCaller(companyId);
 
     const items = await tx.brand.findMany({
+      // 006-visit-outcomes: a Marketing Executive receives ACTIVE brands
+      // only, so the order screen cannot offer a brand the admin retired
+      // (FR-008). Filtering server-side is the rule, not a convenience —
+      // submission rejects an inactive brand regardless, and the UI must not
+      // be able to present an invalid choice in the first place. The admin's
+      // own view is unchanged and still includes inactive rows.
+      ...(activeOnly ? { where: { isActive: true } } : {}),
       orderBy: { displayOrder: 'asc' },
       select: this.rowSelect,
     });

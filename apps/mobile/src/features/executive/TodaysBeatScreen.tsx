@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   ActivityIndicator,
   Pressable,
@@ -12,11 +13,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { apiRequest, generateIdempotencyKey } from '../../api/client';
 import { ExecutiveBottomNav } from '../../components/ExecutiveBottomNav';
+import type { ExecutiveStackParamList } from '../../navigation/RootNavigator';
 import {
   OutlineIcon,
   type IconShape,
 } from '../../components/icons/OutlineIcon';
 import { getCurrentPosition, locationFailureMessage } from '../../lib/location';
+import {
+  startOutboxSync,
+  subscribeOutbox,
+  sync as syncOutbox,
+  type HeldSubmission,
+} from '../../lib/outbox';
 import { clearSession, getSession } from '../../lib/secureSession';
 
 import {
@@ -145,6 +153,17 @@ interface MeResponse {
 
 export function TodaysBeatScreen() {
   const insets = useSafeAreaInsets();
+  const navigation =
+    useNavigation<
+      NativeStackNavigationProp<ExecutiveStackParamList, 'TodaysBeat'>
+    >();
+
+  // 006-visit-outcomes: submissions held on the device waiting for a
+  // connection. Shown so the executive can tell at a glance that work is
+  // saved but not yet sent (FR-039).
+  const [held, setHeld] = useState<HeldSubmission[]>([]);
+  useEffect(() => subscribeOutbox(setHeld), []);
+  useEffect(() => startOutboxSync(), []);
 
   const [data, setData] = useState<TodayResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -188,6 +207,9 @@ export function TodaysBeatScreen() {
       setData(result);
       hasDataRef.current = true;
       setError(null);
+      // A successful request is the only real evidence of a connection
+      // (research.md §2) — so it is also the best moment to drain the queue.
+      void syncOutbox();
     } catch (err) {
       // Keep whatever is already on screen. Stale data is never silently
       // presented as fresh — the message says the refresh failed — but it
@@ -248,6 +270,15 @@ export function TodaysBeatScreen() {
 
   /** Mirrors the admin home's logout: revoke server-side, then clear locally regardless. */
   async function handleLogout(): Promise<void> {
+    // FR-041: logging out would strand submissions the executive believes
+    // are saved, so the session is KEPT and they are told why.
+    if (held.length > 0) {
+      setError(
+        `${held.length} submission${held.length === 1 ? '' : 's'} still waiting to sync. Reconnect so they can be sent before logging out.`,
+      );
+      return;
+    }
+
     try {
       const session = await getSession();
       if (session) {
@@ -513,6 +544,28 @@ export function TodaysBeatScreen() {
             </View>
           ) : null}
 
+          {held.length > 0 ? (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+                paddingVertical: 11,
+                paddingHorizontal: 14,
+                borderRadius: 14,
+                backgroundColor: RUNNING_BG,
+                borderWidth: 1,
+                borderColor: RUNNING_BORDER,
+              }}
+            >
+              <Text style={{ fontSize: 13, color: RUNNING_INK, flexShrink: 1 }}>
+                {held.filter((item) => item.permanentlyRejected).length > 0
+                  ? `${held.filter((i) => i.permanentlyRejected).length} submission${held.filter((i) => i.permanentlyRejected).length === 1 ? '' : 's'} could not be saved — ${held.find((i) => i.permanentlyRejected)?.lastError ?? ''}`
+                  : `${held.length} visit${held.length === 1 ? '' : 's'} waiting to sync. They are saved on your phone.`}
+              </Text>
+            </View>
+          ) : null}
+
           {assignment && state === 'NOT_STARTED' ? (
             <LockedStrip text="Start the beat to record visits and add extra shops." />
           ) : null}
@@ -530,7 +583,31 @@ export function TodaysBeatScreen() {
           ) : null}
 
           {visible.map((stop) => (
-            <StopRow key={stop.id} locked={state !== 'RUNNING'} stop={stop} />
+            <StopRow
+              key={stop.id}
+              locked={state !== 'RUNNING'}
+              onPress={() => {
+                if (state !== 'RUNNING') {
+                  return;
+                }
+                // FR-001: a shop with no saved location goes to capture, not
+                // to the outcome path — recording there is impossible until
+                // the pin exists.
+                if (stop.shop.pinStatus === 'APPROVED') {
+                  navigation.navigate('ShopVisit', { stopId: stop.id });
+                } else {
+                  navigation.navigate('CaptureShopPin', {
+                    stopId: stop.id,
+                    shopId: stop.shop.id,
+                    shopName: stop.shop.name,
+                    shopCode: stop.shop.id.slice(0, 8),
+                    addressLine: stop.shop.addressLine,
+                    maxAccuracyMeters: 20,
+                  });
+                }
+              }}
+              stop={stop}
+            />
           ))}
         </View>
       </ScrollView>
@@ -961,7 +1038,15 @@ function NoBeatCard({
   );
 }
 
-function StopRow({ stop, locked }: { stop: Stop; locked: boolean }) {
+function StopRow({
+  stop,
+  locked,
+  onPress,
+}: {
+  stop: Stop;
+  locked: boolean;
+  onPress: () => void;
+}) {
   const isExtra = stop.source !== 'PLAN';
   const statusChip =
     stop.status === 'REVISIT' || isExtra
@@ -977,7 +1062,9 @@ function StopRow({ stop, locked }: { stop: Stop; locked: boolean }) {
   const pinOk = stop.shop.pinStatus === 'APPROVED';
 
   return (
-    <View
+    <Pressable
+      disabled={locked}
+      onPress={onPress}
       style={{
         flexDirection: 'row',
         gap: 12,
@@ -1046,7 +1133,7 @@ function StopRow({ stop, locked }: { stop: Stop; locked: boolean }) {
           />
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 

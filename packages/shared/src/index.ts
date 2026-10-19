@@ -110,3 +110,6 @@ export type {
 
 export { startBeatSchema, endBeatSchema } from './assignments.schema';
 export type { StartBeatInput, EndBeatInput } from './assignments.schema';
+
+export { submitVisitSchema, capturePinSchema } from './visits.schema';
+export type { SubmitVisitInput, CapturePinInput } from './visits.schema';
