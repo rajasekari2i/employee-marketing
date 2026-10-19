@@ -7,7 +7,10 @@ import type { RoleKey, UserStatus } from '@field-sales/shared';
 import { BeatPlanFormScreen } from '../features/admin/BeatPlanFormScreen';
 import { BeatPlansListScreen } from '../features/admin/BeatPlansListScreen';
 import { BrandsReasonsListScreen } from '../features/admin/BrandsReasonsListScreen';
+import { AddExtraShopScreen } from '../features/executive/AddExtraShopScreen';
+import { MyVisitsScreen } from '../features/executive/MyVisitsScreen';
 import { CaptureShopPinScreen } from '../features/executive/CaptureShopPinScreen';
+import { CreateShopFromFieldScreen } from '../features/executive/CreateShopFromFieldScreen';
 import { RecordNoOrderScreen } from '../features/executive/RecordNoOrderScreen';
 import { RecordOrderScreen } from '../features/executive/RecordOrderScreen';
 import { ShopVisitScreen } from '../features/executive/ShopVisitScreen';
@@ -145,6 +148,24 @@ export type ExecutiveStackParamList = {
     addressLine: string | null;
     maxAccuracyMeters: number;
   };
+  /**
+   * 007-extra-shops, PRD §4 screen 1.4. Reached only while the beat is
+   * RUNNING — `totalStopsToday` is today's current stop count, which the
+   * footer renders as "as stop N today" with N = count + 1 (the size of the
+   * day AFTER the add, not the stop's `sequence`).
+   */
+  AddExtraShop: {
+    assignmentId: string;
+    beatPlanName: string | null;
+    totalStopsToday: number;
+  };
+  /** 008-my-visits, PRD §4 screen 1.5 — the executive's own visit history. */
+  MyVisits: undefined;
+  /** Board 4.9's form, reached from board 1.4's "Shop not listed — create new". */
+  CreateShopFromField: {
+    assignmentId: string;
+    beatPlanName: string | null;
+  };
 };
 
 export type ComingSoonStackParamList = {
@@ -278,6 +299,21 @@ function ExecutiveNavigator() {
       <ExecutiveStack.Screen
         name="RecordNoOrder"
         component={RecordNoOrderScreen}
+        options={{ headerShown: false }}
+      />
+      <ExecutiveStack.Screen
+        name="MyVisits"
+        component={MyVisitsScreen}
+        options={{ headerShown: false }}
+      />
+      <ExecutiveStack.Screen
+        name="AddExtraShop"
+        component={AddExtraShopScreen}
+        options={{ headerShown: false }}
+      />
+      <ExecutiveStack.Screen
+        name="CreateShopFromField"
+        component={CreateShopFromFieldScreen}
         options={{ headerShown: false }}
       />
       <ExecutiveStack.Screen

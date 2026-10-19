@@ -117,13 +117,16 @@ async function ensurePermission(): Promise<
     PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
     {
       title: 'Location needed for your beat',
-      // LOAD-BEARING, not cosmetic (FR-021). The confirm-and-submit screen
-      // deliberately says nothing about location (FR-018), so this prompt is
-      // now the ONLY place the app discloses what it does with it. It must
-      // therefore cover recording visits, not just starting and ending the
-      // beat.
+      // LOAD-BEARING, not cosmetic (006 FR-021, 007 FR-020). The
+      // confirm-and-submit screen deliberately says nothing about location
+      // (006 FR-018), so this prompt is the ONLY place the app discloses
+      // what it does with it. It must therefore cover every use, and
+      // 007-extra-shops adds a third: board 1.4 reads the position to order
+      // the shop picker nearest-first and to show each shop's distance.
+      // Adding a use without widening this string would leave the
+      // disclosure incomplete.
       message:
-        'Your location is saved when you start and end the beat, and when you record a visit at a shop.',
+        'Your location is saved when you start and end the beat, and when you record a visit at a shop. It is also used to find shops near you when you add an extra shop.',
       buttonPositive: 'Allow',
       buttonNegative: 'Not now',
     },

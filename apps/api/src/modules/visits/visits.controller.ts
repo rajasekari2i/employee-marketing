@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -12,6 +13,8 @@ import { createZodDto } from 'nestjs-zod';
 import {
   AppError,
   capturePinSchema,
+  myVisitsQuerySchema,
+  nearbyShopsQuerySchema,
   submitVisitSchema,
 } from '@field-sales/shared';
 
@@ -20,11 +23,15 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../../common/guards/jwt-auth.guard';
 import { RequireIdempotencyKeyGuard } from '../../common/guards/require-idempotency-key.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { MyVisitsService } from './my-visits.service';
+import { NearbyShopsService } from './nearby-shops.service';
 import { ShopPinService } from './shop-pin.service';
 import { VisitsService } from './visits.service';
 
 class SubmitVisitDto extends createZodDto(submitVisitSchema) {}
 class CapturePinDto extends createZodDto(capturePinSchema) {}
+class NearbyShopsQueryDto extends createZodDto(nearbyShopsQuerySchema) {}
+class MyVisitsQueryDto extends createZodDto(myVisitsQuerySchema) {}
 
 /**
  * 006-visit-outcomes / contracts/visits.md. Marketing Executive only, and
@@ -43,7 +50,57 @@ export class VisitsController {
   constructor(
     private readonly visitsService: VisitsService,
     private readonly shopPinService: ShopPinService,
+    private readonly nearbyShopsService: NearbyShopsService,
+    private readonly myVisitsService: MyVisitsService,
   ) {}
+
+  /**
+   * `GET /visits/mine` — the executive's own history, board 1.5
+   * (008-my-visits). Path taken verbatim from `03-ARCHITECTURE.md:830`.
+   *
+   * The manager's `GET /visits` on the line ABOVE it in that table is a
+   * **separate route by design**, not a role-filtered variant of this one.
+   * That split is what keeps the measurement, the flags and the review
+   * status out of an executive response structurally rather than by a
+   * conditional — the manager's list carries all of them deliberately.
+   *
+   * A read, so no `Idempotency-Key` and no audit. The caller's own executive
+   * id comes from the verified JWT; there is no parameter for it.
+   */
+  @Get('visits/mine')
+  async myVisits(
+    @Req() request: AuthenticatedRequest,
+    @Query() query: MyVisitsQueryDto,
+  ) {
+    return this.myVisitsService.list(
+      this.requireCompanyId(request),
+      this.requireExecutiveId(request),
+      query,
+    );
+  }
+
+  /**
+   * `GET /shops/nearby` — board 1.4's picker (007-extra-shops). Path taken
+   * verbatim from `03-ARCHITECTURE.md:826`.
+   *
+   * Here, not in the admin-only shops module, for the reason recorded above
+   * for `POST /shops/:id/pin`: it is the executive's field flow.
+   *
+   * A read, so no `Idempotency-Key`. The response is a purpose-built
+   * projection that never carries a shop coordinate or a radius — see
+   * `nearby-shops.service.ts`.
+   */
+  @Get('shops/nearby')
+  async nearbyShops(
+    @Req() request: AuthenticatedRequest,
+    @Query() query: NearbyShopsQueryDto,
+  ) {
+    return this.nearbyShopsService.list(
+      this.requireCompanyId(request),
+      this.requireExecutiveId(request),
+      query,
+    );
+  }
 
   /** Wrapped in `{ stop }` to match contracts/visits.md. */
   @Get('stops/:id')

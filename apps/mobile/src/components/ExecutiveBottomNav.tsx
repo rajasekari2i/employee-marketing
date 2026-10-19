@@ -72,10 +72,13 @@ function NavItem({
 export function ExecutiveBottomNav({
   active,
   onTodayPress,
+  onMyVisitsPress,
   bottomInset = 0,
 }: {
   active: ExecutiveBottomNavTab | null;
   onTodayPress: () => void;
+  /** 008-my-visits: board 1.5 is built, so this item navigates. */
+  onMyVisitsPress: () => void;
   bottomInset?: number;
 }) {
   return (
@@ -103,7 +106,7 @@ export function ExecutiveBottomNav({
         active={active === 'MyVisits'}
         icon={ICON_MY_VISITS}
         label="My visits"
-        onPress={() => comingSoon('My visits')}
+        onPress={onMyVisitsPress}
       />
       <NavItem
         active={active === 'MyTotals'}

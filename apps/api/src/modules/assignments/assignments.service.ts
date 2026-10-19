@@ -96,6 +96,7 @@ type AssignmentRow = Prisma.DailyAssignmentGetPayload<{
   select: {
     id: true;
     businessDate: true;
+    beatPlanId: true;
     beatPlanName: true;
     status: true;
     startedAt: true;
@@ -146,6 +147,10 @@ export class AssignmentsService {
   private readonly assignmentSelect = {
     id: true,
     businessDate: true,
+    // 007-extra-shops: null marks a day with no plan behind it. Needed at
+    // read time so {@link getToday} can re-derive the no-beat reason rather
+    // than dropping it once the row exists.
+    beatPlanId: true,
     beatPlanName: true,
     status: true,
     startedAt: true,
@@ -192,7 +197,16 @@ export class AssignmentsService {
     if (existing) {
       return {
         assignment: this.toView(existing, businessDate),
-        noBeatReason: null,
+        // 007-extra-shops: a plan-less day is now a real row, so that it can
+        // be started and can hold extra stops (PRD FR-ASSIGN-10). The
+        // no-beat card must still explain WHY the day is empty, so the
+        // reason is re-derived here rather than dropped the moment the row
+        // exists — the response shape is unchanged, `assignment` is simply
+        // no longer null in that case.
+        noBeatReason:
+          existing.beatPlanId === null
+            ? await this.resolveNoBeatReason(tx, executiveId, businessDate)
+            : null,
       };
     }
 
@@ -209,6 +223,31 @@ export class AssignmentsService {
       select: { timezone: true },
     });
     return this.clock.businessDate(company?.timezone ?? 'Asia/Kolkata');
+  }
+
+  /**
+   * Why a day has no plan behind it — `NO_BEAT_PLAN` when the executive has
+   * no active plan at all, `NOT_A_WORKING_DAY` when they have one that does
+   * not cover today's weekday (007-extra-shops).
+   *
+   * Only ever called for a row whose `beatPlanId` is null, so it costs one
+   * extra read on exactly the days that have no stops to read.
+   */
+  private async resolveNoBeatReason(
+    tx: AssignmentsTx,
+    executiveId: string,
+    businessDate: string,
+  ): Promise<NoBeatReason> {
+    const plan = await tx.beatPlan.findFirst({
+      where: { executiveId, isActive: true },
+      select: { workingDays: true },
+    });
+    if (!plan) {
+      return 'NO_BEAT_PLAN';
+    }
+    return plan.workingDays.includes(this.clock.weekdayOf(businessDate))
+      ? 'NO_BEAT_PLAN'
+      : 'NOT_A_WORKING_DAY';
   }
 
   /**
@@ -256,13 +295,25 @@ export class AssignmentsService {
       },
     });
 
-    if (!plan) {
-      return { assignment: null, noBeatReason: 'NO_BEAT_PLAN' };
-    }
+    // 007-extra-shops (research.md §7, contracts/extra-shops.md "Changed
+    // behaviour"): these two cases used to return `{ assignment: null }` and
+    // create NO row, which meant `start()` — which takes an assignmentId —
+    // had nothing to act on, so a non-working day or an executive with no
+    // plan could never start a beat and could never hold an extra shop.
+    // PRD FR-ASSIGN-10 promises the opposite, and `beatPlanId` was made
+    // nullable in slice 005 for exactly this ("a day can exist with no plan
+    // behind it once extra-shop-only days are possible"). The row is now
+    // created with a null plan and no stops; the reason is still returned,
+    // so the no-beat card's existing copy keeps explaining why the day is
+    // empty.
+    const noBeatReason: NoBeatReason | null = !plan
+      ? 'NO_BEAT_PLAN'
+      : plan.workingDays.includes(this.clock.weekdayOf(businessDate))
+        ? null
+        : 'NOT_A_WORKING_DAY';
 
-    if (!plan.workingDays.includes(this.clock.weekdayOf(businessDate))) {
-      return { assignment: null, noBeatReason: 'NOT_A_WORKING_DAY' };
-    }
+    /** Only a day that a plan actually covers starts with stops on it. */
+    const planShops = plan && noBeatReason === null ? plan.shops : [];
 
     const settings = await tx.companySettings.findUnique({
       where: { companyId },
@@ -276,12 +327,12 @@ export class AssignmentsService {
           companyId,
           businessDate: this.clock.toDateColumn(businessDate),
           executiveId,
-          beatPlanId: plan.id,
+          beatPlanId: plan && noBeatReason === null ? plan.id : null,
           // Snapshot, not a join — renaming the plan later must not rewrite
           // a day that already happened.
-          beatPlanName: plan.name,
+          beatPlanName: plan && noBeatReason === null ? plan.name : null,
           stops: {
-            create: plan.shops.map((planShop) => ({
+            create: planShops.map((planShop) => ({
               companyId,
               shopId: planShop.shopId,
               sequence: planShop.sequence,
@@ -312,7 +363,7 @@ export class AssignmentsService {
 
       return {
         assignment: this.toView(created, businessDate),
-        noBeatReason: null,
+        noBeatReason,
       };
     } catch (error) {
       // P2002 = someone else created today's route between our read and our
@@ -331,7 +382,7 @@ export class AssignmentsService {
         if (winner) {
           return {
             assignment: this.toView(winner, businessDate),
-            noBeatReason: null,
+            noBeatReason,
           };
         }
       }

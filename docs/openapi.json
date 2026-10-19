@@ -1068,6 +1068,173 @@
         ]
       }
     },
+    "/assignments/{id}/stops": {
+      "post": {
+        "operationId": "AssignmentsController_addExtraStop",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddExtraStopDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "assignments"
+        ]
+      }
+    },
+    "/visits/mine": {
+      "get": {
+        "operationId": "VisitsController_myVisits",
+        "parameters": [
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "exclusiveMaximum": false,
+              "exclusiveMinimum": false,
+              "default": 10,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "outcome",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ORDER",
+                "NO_ORDER"
+              ]
+            }
+          },
+          {
+            "name": "range",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "ALL",
+              "type": "string",
+              "enum": [
+                "ALL",
+                "LAST_7_DAYS",
+                "LAST_30_DAYS"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "visits"
+        ]
+      }
+    },
+    "/shops/nearby": {
+      "get": {
+        "operationId": "VisitsController_nearbyShops",
+        "parameters": [
+          {
+            "name": "excludeAssignment",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "lat",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": -90,
+              "maximum": 90,
+              "exclusiveMaximum": false,
+              "exclusiveMinimum": false,
+              "type": "number"
+            }
+          },
+          {
+            "name": "lng",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": -180,
+              "maximum": 180,
+              "exclusiveMaximum": false,
+              "exclusiveMinimum": false,
+              "type": "number"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "exclusiveMaximum": false,
+              "exclusiveMinimum": false,
+              "default": 50,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "visits"
+        ]
+      }
+    },
     "/stops/{id}": {
       "get": {
         "operationId": "VisitsController_stopDetail",
@@ -1953,6 +2120,78 @@
           "accuracyMeters",
           "capturedAt"
         ]
+      },
+      "AddExtraStopDto": {
+        "type": "object",
+        "properties": {
+          "shopId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "newShop": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "ownerName": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "phone": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32
+              },
+              "addressLine1": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "city": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "latitude": {
+                "type": "number",
+                "minimum": -90,
+                "exclusiveMinimum": false,
+                "maximum": 90,
+                "exclusiveMaximum": false
+              },
+              "longitude": {
+                "type": "number",
+                "minimum": -180,
+                "exclusiveMinimum": false,
+                "maximum": 180,
+                "exclusiveMaximum": false
+              },
+              "accuracyMeters": {
+                "type": "integer",
+                "minimum": 0,
+                "exclusiveMinimum": false
+              },
+              "capturedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "name",
+              "latitude",
+              "longitude",
+              "accuracyMeters",
+              "capturedAt"
+            ]
+          },
+          "fromOfflineQueue": {
+            "type": "boolean"
+          }
+        }
       },
       "SubmitVisitDto": {
         "type": "object",

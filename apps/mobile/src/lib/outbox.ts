@@ -22,7 +22,17 @@ import { ApiError, apiRequest, generateIdempotencyKey } from '../api/client';
 
 const QUEUE_KEY = 'fieldsales.outbox.v1';
 
-export type HeldKind = 'VISIT' | 'PIN';
+/**
+ * What a held item is.
+ *
+ * `STOP` is 007-extra-shops: `03-ARCHITECTURE.md:1016` names extra-shop
+ * addition as one of exactly four queueable commands, alongside visit
+ * submission, pin capture and beat start/end. Nothing else in this file
+ * needed to change for it — the queue is addressed by `path` and `body`, so
+ * a new kind is a new label on the same machinery. Reads are never queued,
+ * which is why the board-1.4 picker is not here.
+ */
+export type HeldKind = 'VISIT' | 'PIN' | 'STOP';
 
 export interface HeldSubmission {
   id: string;

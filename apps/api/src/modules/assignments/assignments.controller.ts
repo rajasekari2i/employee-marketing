@@ -9,7 +9,12 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { createZodDto } from 'nestjs-zod';
-import { AppError, endBeatSchema, startBeatSchema } from '@field-sales/shared';
+import {
+  AppError,
+  addExtraStopSchema,
+  endBeatSchema,
+  startBeatSchema,
+} from '@field-sales/shared';
 
 import { Audited } from '../../common/decorators/audited.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -17,9 +22,11 @@ import type { AuthenticatedRequest } from '../../common/guards/jwt-auth.guard';
 import { RequireIdempotencyKeyGuard } from '../../common/guards/require-idempotency-key.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { AssignmentsService } from './assignments.service';
+import { ExtraStopService } from './extra-stop.service';
 
 class StartBeatDto extends createZodDto(startBeatSchema) {}
 class EndBeatDto extends createZodDto(endBeatSchema) {}
+class AddExtraStopDto extends createZodDto(addExtraStopSchema) {}
 
 /**
  * 005-executive-dashboard / contracts/assignments.md. Marketing Executive
@@ -36,7 +43,10 @@ class EndBeatDto extends createZodDto(endBeatSchema) {}
 @UseGuards(RolesGuard)
 @Roles('MARKETING_EXECUTIVE')
 export class AssignmentsController {
-  constructor(private readonly assignmentsService: AssignmentsService) {}
+  constructor(
+    private readonly assignmentsService: AssignmentsService,
+    private readonly extraStopService: ExtraStopService,
+  ) {}
 
   /**
    * **This read may write.** When no route exists for the caller's
@@ -87,6 +97,37 @@ export class AssignmentsController {
     @Body() body: EndBeatDto,
   ) {
     return this.assignmentsService.end(
+      this.requireCompanyId(request),
+      this.requireExecutiveId(request),
+      id,
+      body,
+    );
+  }
+
+  /**
+   * `POST /assignments/:id/stops` — one extra shop onto the caller's own
+   * running day (007-extra-shops, board 1.4).
+   *
+   * The path is taken verbatim from `03-ARCHITECTURE.md:824`. The manager's
+   * sibling on the next line of that table —
+   * `POST /assignments/:id/stops/manager`, with its required `reason` — is a
+   * later slice; building the executive's one here leaves it a sibling
+   * rather than a refactor.
+   *
+   * `201`, unlike `start`/`end`: this genuinely creates a row. A repeat with
+   * the same key replays the stored response; a *different* request naming a
+   * shop that is already on the day gets `409 SHOP_ALREADY_IN_BEAT`. Two
+   * mechanisms, one situation each.
+   */
+  @Post(':id/stops')
+  @UseGuards(RequireIdempotencyKeyGuard)
+  @Audited('extra-shop.create', 'AssignmentStop')
+  addExtraStop(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: AddExtraStopDto,
+  ) {
+    return this.extraStopService.addExtraStop(
       this.requireCompanyId(request),
       this.requireExecutiveId(request),
       id,

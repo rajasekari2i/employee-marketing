@@ -113,3 +113,16 @@ export type { StartBeatInput, EndBeatInput } from './assignments.schema';
 
 export { submitVisitSchema, capturePinSchema } from './visits.schema';
 export type { SubmitVisitInput, CapturePinInput } from './visits.schema';
+
+export {
+  nearbyShopsQuerySchema,
+  addExtraStopSchema,
+} from './extra-shops.schema';
+export type {
+  NearbyShopsQuery,
+  AddExtraStopInput,
+  NewShopInput,
+} from './extra-shops.schema';
+
+export { myVisitsQuerySchema } from './my-visits.schema';
+export type { MyVisitsQuery } from './my-visits.schema';

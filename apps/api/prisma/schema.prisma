@@ -771,6 +771,22 @@ model Visit {
   // never move when a visit is recorded as having happened.
   receivedAt        DateTime @default(now()) @map("received_at")
 
+  // 008-my-visits (research.md §2): the business day this visit belongs to,
+  // SNAPSHOTTED from the stop's DailyAssignment at submission and never
+  // updated. It cannot drift from its source — a DailyAssignment is itself
+  // an immutable snapshot (BUS-05).
+  //
+  // It exists so the executive's history can be ordered DAY-MAJOR
+  // (businessDate, submittedAt, id). That is what makes "one block per day,
+  // even across a page boundary" (FR-011) a property of the query instead of
+  // a hope: ordering by submittedAt alone would let a phone with a wrong
+  // clock interleave two days and split a group. With this column a bad
+  // device clock can misplace a row WITHIN its day and nothing more.
+  //
+  // Never client-supplied — absent from submitVisitSchema, which is
+  // .strict(), so a body carrying it is a 400 (Constitution rules 1 and 8).
+  businessDate DateTime @map("business_date") @db.Date
+
   // Snapshot of what the distance was measured against (research.md §4).
   shopLatitude          Decimal? @map("shop_latitude") @db.Decimal(9, 6)
   shopLongitude         Decimal? @map("shop_longitude") @db.Decimal(9, 6)
@@ -791,6 +807,19 @@ model Visit {
   // manager-granted revisit produces a NEW stop, so it never contends here.
   @@unique([stopId])
   @@index([companyId, shopId, receivedAt])
+  // 008-my-visits: "this executive's visits, newest first" — every query the
+  // My visits screen makes. None of the three indexes around it covers that:
+  // they serve the shop's history, the day's visits and the review queue.
+  //
+  // The explicit `map:` is REQUIRED, not cosmetic. Prisma's generated name
+  // would be
+  // `visits_company_id_executive_id_business_date_submitted_at_id_idx` — 64
+  // characters against Postgres' 63-byte identifier limit, which Postgres
+  // truncates silently. A hand-written migration and a later `migrate diff`
+  // would then disagree about the name and the next `migrate dev` would try
+  // to create a second, near-identical index. The longest name otherwise in
+  // this schema is 59 characters, so this is the first one to cross.
+  @@index([companyId, executiveId, businessDate, submittedAt, id], map: "visits_exec_history_idx")
   @@index([companyId, assignmentId])
   @@index([companyId, reviewStatus])
   @@map("visits")

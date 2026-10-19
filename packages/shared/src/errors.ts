@@ -59,6 +59,13 @@ export const ERROR_CODES = [
   'SHOP_PIN_REQUIRED',
   'PIN_ACCURACY_TOO_LOW',
   'PIN_ALREADY_SET',
+  // 007-extra-shops, contracts/extra-shops.md. The user-facing half of the
+  // @@unique([assignmentId, shopId]) constraint on AssignmentStop, which is
+  // what makes "a shop cannot be on today's list twice" a database fact two
+  // concurrent requests cannot both pass (BUS-08). The picker already hides
+  // an already-added shop; this is the server refusing it anyway, because
+  // FR-011 requires the refusal to survive a direct request and a race.
+  'SHOP_ALREADY_IN_BEAT',
   'IDEMPOTENCY_KEY_REUSED',
   'OTP_INCORRECT',
   'OTP_EXPIRED',
@@ -101,6 +108,7 @@ export const ERROR_STATUS: Readonly<Record<ErrorCode, number>> = {
   SHOP_PIN_REQUIRED: 409,
   PIN_ACCURACY_TOO_LOW: 409,
   PIN_ALREADY_SET: 409,
+  SHOP_ALREADY_IN_BEAT: 409,
   OTP_INCORRECT: 400,
   OTP_EXPIRED: 410,
   OTP_ATTEMPTS_EXHAUSTED: 429,
@@ -133,6 +141,7 @@ export const ERROR_TITLES: Readonly<Record<ErrorCode, string>> = {
   SHOP_PIN_REQUIRED: 'Shop location required',
   PIN_ACCURACY_TOO_LOW: 'Location accuracy too low',
   PIN_ALREADY_SET: 'Shop location already set',
+  SHOP_ALREADY_IN_BEAT: "Shop already in today's beat",
   OTP_INCORRECT: 'Incorrect OTP',
   OTP_EXPIRED: 'OTP expired',
   OTP_ATTEMPTS_EXHAUSTED: 'OTP attempts exhausted',

@@ -100,3 +100,66 @@ export function greetingFor(value: Date, fullName: string | undefined): string {
   const first = (fullName ?? '').trim().split(/\s+/)[0] ?? '';
   return first ? `${part}, ${first}` : part;
 }
+
+/**
+ * Board 1.4 ("Add extra shop", uuid `eccc1168-1e66-4039-92fc-0d14dd936744`),
+ * decoded with the CLAUDE.md recipe.
+ *
+ * Only the hexes board 1.3 does not already define are added here. The board
+ * reuses several of the values above at identical hex, so those are reused by
+ * name rather than redeclared: `CHIP_VIOLET_BG` is the banner fill,
+ * `RUNNING_BG` is the selected row's fill, `BORDER` is the picker card's
+ * hairline, `BLUE` is the selected border and the dashed actions, and the pin
+ * and beat chips are `CHIP_PIN_OK_*` / `CHIP_PIN_MISSING_*` /
+ * `CHIP_PENDING_*` unchanged.
+ */
+
+/** The violet banner's ink — darker than the chip's `CHIP_VIOLET_FG`. */
+export const BANNER_INK = '#4C2690';
+
+/**
+ * The search field's hairline, and the disabled primary button's fill. One
+ * hex, two roles, exactly as the board uses it.
+ */
+export const FIELD_BORDER = '#CBD2DD';
+
+/** The unselected radio's ring. */
+export const RADIO_RING = '#AEB7C5';
+
+/** `.btn` on the boards: 54 px tall, 14 radius, 700/16. */
+export const PRIMARY_BUTTON_HEIGHT = 54;
+
+/** The dashed secondary action shared by boards 1.3 and 1.4: 48 px tall, 14 radius. */
+export const DASHED_BUTTON_HEIGHT = 48;
+
+/**
+ * Board 1.5 ("My visits", uuid `94506a6c-c909-40f9-b3d2-e0cca7bad3f5`),
+ * decoded with the CLAUDE.md recipe.
+ *
+ * Almost every colour board 1.5 uses is already defined above at the same
+ * hex, so they are reused by name rather than redeclared: `TAB_TRACK`
+ * (`#E6EAF1`) is the tab track, `BORDER` (`#DFE4EC`) the day card and the
+ * bar's top edge, `ROW_SEPARATOR` (`#ECEFF4`) the row divider,
+ * `CHIP_PIN_OK_BG`/`CHIP_PIN_OK_FG` the `ORD` badge,
+ * `CHIP_PENDING_BG`/`CHIP_PENDING_FG` the `NO` badge, `FIELD_BORDER`
+ * (`#CBD2DD`) the date button's hairline, and `RUNNING_*` the waiting strip.
+ * What follows is the geometry that is genuinely new.
+ *
+ * **One discrepancy found while decoding, deliberately NOT fixed here.**
+ * Board 1.3's `.tab` is `36px / 600`; `FilterTab` in `TodaysBeatScreen.tsx`
+ * renders it at `38px / 600`, so it matches neither board. Board 1.5's
+ * `.seg` is `38px / 700` — different again. `FilterTab` is therefore **not**
+ * reused for board 1.5; this screen builds its own segment at the right
+ * weight. Slice 005's 2 px discrepancy is left alone because
+ * `TodaysBeatScreen` is not this feature's file, and is recorded here and in
+ * `specs/008-my-visits/tasks.md` as its own small fix.
+ */
+
+/** `.seg` on board 1.5 — 38 tall, radius 10, weight 700, size 14. */
+export const SEGMENT_HEIGHT = 38;
+
+/** The date-range control in board 1.5's header. */
+export const DATE_BUTTON_HEIGHT = 40;
+
+/** The `ORD` / `NO` badge on a visit row: 36 square, radius 11, 11/800. */
+export const VISIT_BADGE_SIZE = 36;

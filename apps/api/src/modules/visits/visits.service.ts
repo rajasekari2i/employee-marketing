@@ -156,6 +156,13 @@ export class VisitsService {
     return {
       id: stop.id,
       sequence: stop.sequence,
+      // Correct for an extra stop too (007-extra-shops): `sequence` is
+      // 0-based for planned stops (`beat-plans.service.ts` writes
+      // `sequence: index`) and an extra stop is appended at `max + 1`, so a
+      // 12-stop day's first extra reads "Stop 13 of 13". Nothing in this
+      // service reads `AssignmentStop.source` — an EXEC_EXTRA stop takes the
+      // identical path, which is FR-014 expressed as code: there is no
+      // second path.
       positionLabel: `Stop ${stop.sequence + 1} of ${stop.assignment._count.stops}`,
       status: stop.status,
       canRecordOutcome: blockedReason === null,
@@ -234,7 +241,8 @@ export class VisitsService {
         effectiveRadiusMeters: true,
         shopLatitude: true,
         shopLongitude: true,
-        assignment: { select: { status: true } },
+        // 008-my-visits: businessDate is snapshotted onto the visit below.
+        assignment: { select: { status: true, businessDate: true } },
         shop: { select: { locationStatus: true } },
       },
     });
@@ -341,6 +349,15 @@ export class VisitsService {
         capturedAt,
         submittedAt: new Date(input.submittedAt),
         receivedAt,
+        // 008-my-visits: the business day this visit belongs to, taken from
+        // the assignment that already owns it — NEVER derived from a
+        // timestamp and never accepted from the body. `businessDate` is
+        // absent from submitVisitSchema, which is `.strict()`, so a client
+        // sending it gets a 400 (Constitution rules 1 and 8). Do not
+        // "helpfully" start accepting it: an offline visit syncing across
+        // midnight would then land on the wrong day, which is precisely what
+        // this column exists to prevent.
+        businessDate: stop.assignment.businessDate,
         shopLatitude: stop.shopLatitude,
         shopLongitude: stop.shopLongitude,
         effectiveRadiusMeters: stop.effectiveRadiusMeters,

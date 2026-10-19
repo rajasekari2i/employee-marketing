@@ -39,6 +39,18 @@ const SENSITIVE_KEYS = new Set<string>([
   'authorization',
   'latitude',
   'longitude',
+  // 007-extra-shops. `GET /shops/nearby?lat=&lng=` is the first endpoint in
+  // the product to take a position in the QUERY STRING — every prior one
+  // arrived in a body as `latitude`/`longitude`, which the two keys above
+  // already cover. Verified live before adding these: pino's own req
+  // serializer emits a parsed `query` object
+  // (`{ query: { lat: '13.08511', lng: '80.21492' } }`), and with only the
+  // long spellings in this set that coordinate was written to the log in
+  // plaintext — exactly the leak Constitution rule 9 forbids. The raw
+  // query-string copy inside `url` is separately handled by app.module.ts's
+  // req serializer, which strips everything after `?`.
+  'lat',
+  'lng',
   'reasonText',
   'otp',
   'resetToken',

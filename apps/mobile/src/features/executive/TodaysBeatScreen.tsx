@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiRequest, generateIdempotencyKey } from '../../api/client';
 import { ExecutiveBottomNav } from '../../components/ExecutiveBottomNav';
 import type { ExecutiveStackParamList } from '../../navigation/RootNavigator';
+import { DashedAction } from './DashedAction';
 import {
   OutlineIcon,
   type IconShape,
@@ -114,7 +115,14 @@ interface Stop {
     id: string;
     name: string;
     addressLine: string | null;
-    pinStatus: 'NONE' | 'APPROVED';
+    // 006-visit-outcomes widened LocationStatus with PENDING_VERIFICATION —
+    // the server has been able to return it since then and this type still
+    // omitted it. 007-extra-shops makes it reachable for the first time: a
+    // shop an executive created from the field waits for the Company
+    // Admin's confirmation unless the company auto-approves. The routing
+    // below already does the right thing with it (anything but APPROVED
+    // goes to capture), so this is the type catching up with the server.
+    pinStatus: 'NONE' | 'PENDING_VERIFICATION' | 'APPROVED';
   };
   previousOutcome: string | null;
 }
@@ -561,13 +569,33 @@ export function TodaysBeatScreen() {
               <Text style={{ fontSize: 13, color: RUNNING_INK, flexShrink: 1 }}>
                 {held.filter((item) => item.permanentlyRejected).length > 0
                   ? `${held.filter((i) => i.permanentlyRejected).length} submission${held.filter((i) => i.permanentlyRejected).length === 1 ? '' : 's'} could not be saved — ${held.find((i) => i.permanentlyRejected)?.lastError ?? ''}`
-                  : `${held.length} visit${held.length === 1 ? '' : 's'} waiting to sync. They are saved on your phone.`}
+                  : waitingLabel(held)}
               </Text>
             </View>
           ) : null}
 
           {assignment && state === 'NOT_STARTED' ? (
             <LockedStrip text="Start the beat to record visits and add extra shops." />
+          ) : null}
+
+          {/*
+            007-extra-shops, FR-001. Board 1.3 draws this under
+            `<sc-if value="{{active}}">` in exactly this slot — the one that
+            holds the locked strip for NOT_STARTED and ENDED — NOT beside
+            "End beat" in the running strip. The RUNNING case rendered
+            nothing here before; this is the gap the slice fills.
+          */}
+          {assignment && state === 'RUNNING' ? (
+            <DashedAction
+              label="Add extra shop to today"
+              onPress={() =>
+                navigation.navigate('AddExtraShop', {
+                  assignmentId: assignment.id,
+                  beatPlanName: assignment.beatPlanName,
+                  totalStopsToday: assignment.counts.total,
+                })
+              }
+            />
           ) : null}
 
           {assignment && state === 'ENDED' ? (
@@ -615,6 +643,9 @@ export function TodaysBeatScreen() {
       <ExecutiveBottomNav
         active="Today"
         bottomInset={insets.bottom}
+        // 008-my-visits: board 1.5 is built, so this tab navigates instead
+        // of raising the "coming in a later update" alert.
+        onMyVisitsPress={() => navigation.navigate('MyVisits')}
         onTodayPress={() => void load()}
       />
     </View>
@@ -1135,6 +1166,34 @@ function StopRow({
       </View>
     </Pressable>
   );
+}
+
+/**
+ * The waiting-to-sync strip's copy.
+ *
+ * 007-extra-shops: the queue can now hold an extra-shop add as well as a
+ * visit and a pin, so the strip names what is actually waiting. A queued add
+ * matters to the executive for a reason a queued visit does not — the stop
+ * does not exist on today's list yet and cannot be opened until it syncs,
+ * because the id a visit is recorded against is the server's (FR-023/FR-024,
+ * research.md §9). Saying "N visits" when a shop is waiting would hide that.
+ */
+function waitingLabel(held: HeldSubmission[]): string {
+  const shops = held.filter((item) => item.kind === 'STOP').length;
+  const others = held.length - shops;
+  const parts: string[] = [];
+  if (others > 0) {
+    parts.push(`${others} visit${others === 1 ? '' : 's'}`);
+  }
+  if (shops > 0) {
+    parts.push(`${shops} extra shop${shops === 1 ? '' : 's'}`);
+  }
+  const subject = parts.join(' and ');
+  const tail =
+    shops > 0
+      ? ' They are saved on your phone. An extra shop can be opened once it has synced.'
+      : ' They are saved on your phone.';
+  return `${subject} waiting to sync.${tail}`;
 }
 
 function LockedStrip({ text }: { text: string }) {
