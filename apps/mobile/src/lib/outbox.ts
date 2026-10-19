@@ -131,6 +131,11 @@ export function enqueue(
   });
 }
 
+/** Drops a held item the server will never accept, so it cannot linger. */
+export function discard(id: string): Promise<void> {
+  return remove(id);
+}
+
 function remove(id: string): Promise<void> {
   return serialise(async () => {
     const items = await readRaw();
@@ -173,7 +178,7 @@ function markFailed(
  * it means this exact item already landed, so it is a success for our
  * purposes and the item is dropped by the caller.
  */
-function isPermanent(error: unknown): boolean {
+export function isPermanentRejection(error: unknown): boolean {
   if (!(error instanceof ApiError)) {
     return false;
   }
@@ -225,7 +230,7 @@ export async function sync(): Promise<void> {
           await remove(item.id);
           continue;
         }
-        const permanent = isPermanent(error);
+        const permanent = isPermanentRejection(error);
         await markFailed(
           item.id,
           error instanceof Error ? error.message : 'Unknown error',
@@ -252,7 +257,23 @@ export async function sync(): Promise<void> {
  * plus the app returning to the foreground.
  */
 export function startOutboxSync(): () => void {
-  void sync();
+  // Clear the permanent-rejection flags once per app start before syncing.
+  //
+  // "Permanent" is a judgement about the server's answer at one moment, not
+  // a fact for all time: a 409 because a stop's frozen coordinate was
+  // missing became accept-able the moment that was backfilled server-side.
+  // Giving every held item one fresh chance per launch means a server fix
+  // heals the queue, instead of stranding work the executive believed was
+  // saved. Within a session the flag still does its job — it stops a
+  // doomed item being retried on every trigger.
+  void serialise(async () => {
+    const items = await readRaw();
+    if (items.some((item) => item.permanentlyRejected)) {
+      await writeRaw(
+        items.map((item) => ({ ...item, permanentlyRejected: false })),
+      );
+    }
+  }).then(() => sync());
   const subscription = AppState.addEventListener('change', (state) => {
     if (state === 'active') {
       void sync();

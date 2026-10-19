@@ -3,7 +3,7 @@ import { Modal, Pressable, Text, View } from 'react-native';
 
 import { apiRequest } from '../../api/client';
 import { getCurrentPosition, locationFailureMessage } from '../../lib/location';
-import { enqueue, sync } from '../../lib/outbox';
+import { discard, enqueue, isPermanentRejection, sync } from '../../lib/outbox';
 import { BLUE, BORDER, DANGER, INK, MUTED } from './executiveDesign';
 
 /**
@@ -84,10 +84,29 @@ export function ConfirmSubmitSheet({
       // removes anything the server has already accepted.
       await sync();
       onSubmitted(false);
-    } catch {
-      // No connection, or a transient failure. The submission is already
-      // held, so this is a success from the executive's point of view.
-      onSubmitted(true);
+    } catch (err) {
+      // A blanket catch here previously treated EVERY failure as "safely
+      // queued" and navigated away, so a server rejection looked exactly
+      // like a successful save — found live, where every submission was
+      // being refused and the executive was told nothing.
+      //
+      // The two cases are completely different and must not be conflated:
+      if (isPermanentRejection(err)) {
+        // The server understood and refused: the beat has ended, the stop is
+        // already done, a brand was retired, the shop has no approved pin.
+        // Retrying can never fix it, so the held copy is removed and the
+        // executive is told WHY, staying on this sheet with their work
+        // intact rather than being sent away believing it saved.
+        await discard(held.id);
+        setError(
+          err instanceof Error ? err.message : 'This visit was refused.',
+        );
+      } else {
+        // No connection, or a transient server fault. The submission is
+        // genuinely held and will sync — this one IS a success from the
+        // executive's point of view.
+        onSubmitted(true);
+      }
     } finally {
       setBusy(false);
     }
