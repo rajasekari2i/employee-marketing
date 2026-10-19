@@ -66,15 +66,31 @@ function configureOnce(): void {
   if (configured) {
     return;
   }
-  // `playServices` explicitly, not `auto`: the fused provider returns a
-  // usable fix from Wi-Fi/cell almost immediately, where the legacy Android
-  // LocationManager can sit waiting on a satellite lock indefinitely
-  // indoors. `auto` is supposed to prefer it but silently falls back to the
-  // legacy provider whenever detection is anything less than certain.
+  // `android` (the legacy LocationManager), NOT `playServices`.
+  //
+  // This was briefly set to `playServices` for its faster Wi-Fi/cell fix, and
+  // that **crashed the app natively** on a real device. The library's
+  // PlayServicesLocationManager keeps ONE `mSingleLocationCallback` field,
+  // nulls it after delivering a fix, and then calls
+  // `removeLocationUpdates(mSingleLocationCallback)` with that now-null value
+  // when a second read has already reset it:
+  //
+  //   java.lang.NullPointerException: Listener must not be null
+  //     at ...location.zzbi.removeLocationUpdates
+  //     at ...PlayServicesLocationManager$2.onLocationResult(:170)
+  //
+  // The retry in getCurrentPosition below makes exactly that overlap happen
+  // whenever the first attempt times out and its fix lands late. The legacy
+  // manager cannot hit it: its listener is a `final` field that is never
+  // nulled, and it carries its own `mTriggered` guard.
+  //
+  // Nothing is lost by switching back. What actually fixed the original
+  // "could not get your location" failure was allowing a cached fix
+  // (`maximumAge`) and falling back to a coarse read — not the provider.
   Geolocation.setRNConfiguration({
     skipPermissionRequests: true,
     authorizationLevel: 'whenInUse',
-    locationProvider: 'playServices',
+    locationProvider: 'android',
   });
   configured = true;
 }
@@ -175,7 +191,28 @@ function readOnce(
  * Accuracy is never a reason to fail. The only failures returned are "no
  * permission" and "no fix of any kind".
  */
-export async function getCurrentPosition(): Promise<LocationResult> {
+/**
+ * Guards against two position reads being in flight at once.
+ *
+ * Defensive in depth alongside the provider choice above: the native crash
+ * that motivated it needed two overlapping reads, and the UI can produce
+ * them easily — a double tap on Submit, or Submit pressed while the pin
+ * screen is still acquiring. Sharing the in-flight promise means a second
+ * caller waits for the first result instead of starting a parallel read.
+ */
+let inFlight: Promise<LocationResult> | null = null;
+
+export function getCurrentPosition(): Promise<LocationResult> {
+  if (inFlight) {
+    return inFlight;
+  }
+  inFlight = readPositionWithFallback().finally(() => {
+    inFlight = null;
+  });
+  return inFlight;
+}
+
+async function readPositionWithFallback(): Promise<LocationResult> {
   configureOnce();
 
   const permission = await ensurePermission();
