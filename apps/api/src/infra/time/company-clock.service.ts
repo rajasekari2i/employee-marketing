@@ -63,6 +63,58 @@ export class CompanyClock {
   }
 
   /**
+   * The Monday of the week a business date falls in, as `YYYY-MM-DD`.
+   *
+   * 009-my-totals. One line on top of {@link weekdayOf}, which already
+   * returns 1 = Monday … 7 = Sunday — the convention `BeatPlan.workingDays`
+   * stores — so Monday is simply that many days back, minus one.
+   *
+   * The arithmetic lives HERE and nowhere else. Rule 8 requires one
+   * conversion point, and this file's header already records the growth
+   * path: a feature needing real time arithmetic adopts it inside this
+   * service "without touching a single caller". A report resolving its own
+   * week boundaries would be the second place that knows what a week is.
+   *
+   * The product's week runs **Monday to Sunday** (009 spec, FR-006).
+   */
+  startOfWeek(businessDate: string): string {
+    return this.shiftDays(businessDate, -(this.weekdayOf(businessDate) - 1));
+  }
+
+  /** The first day of the month a business date falls in, as `YYYY-MM-DD`. */
+  startOfMonth(businessDate: string): string {
+    return `${businessDate.slice(0, 7)}-01`;
+  }
+
+  /**
+   * The last day of the month a business date falls in, as `YYYY-MM-DD`.
+   *
+   * Day 0 of the following month is the last day of this one — which also
+   * gets February and leap years right without a table.
+   */
+  endOfMonth(businessDate: string): string {
+    const [year, month] = businessDate.split('-').map(Number);
+    return this.toIsoDate(new Date(Date.UTC(year, month, 0)));
+  }
+
+  /**
+   * Adds (or subtracts) whole days to a business date.
+   *
+   * Safe because the value carries no time: it is parsed at UTC midnight,
+   * shifted, and formatted back, so it can never drift across a boundary the
+   * way a local-midnight instant could.
+   */
+  shiftDays(businessDate: string, days: number): string {
+    const date = this.toDateColumn(businessDate);
+    date.setUTCDate(date.getUTCDate() + days);
+    return this.toIsoDate(date);
+  }
+
+  private toIsoDate(value: Date): string {
+    return value.toISOString().slice(0, 10);
+  }
+
+  /**
    * The same business date as a `Date` at UTC midnight, for writing to a
    * Postgres `DATE` column. The column stores a calendar date with no time, so
    * this must not carry a local-midnight offset that could land on the

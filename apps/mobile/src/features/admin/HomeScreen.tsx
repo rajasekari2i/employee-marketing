@@ -3,7 +3,6 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   ScrollView,
   Text,
@@ -13,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { RoleKey, UserStatus } from '@field-sales/shared';
 
 import { apiRequest } from '../../api/client';
+import { AccountMenu } from '../../components/AccountMenu';
 import { AdminBottomNav } from '../../components/AdminBottomNav';
 import {
   OutlineIcon,
@@ -24,13 +24,10 @@ import {
   BG,
   BLUE,
   BORDER,
-  DANGER,
   INK,
-  LABEL,
   MUTED,
   ROLE_LABELS,
   comingSoon,
-  initialsFor,
 } from './adminDesign';
 
 /**
@@ -109,13 +106,7 @@ const ICON_MASTERS: IconShape[] = [
 ];
 const ICON_SALARY: IconShape[] = [{ d: 'M7 4h10M7 9h10M7 4c5 0 5 5 0 5l7 11' }];
 const ICON_REPORTS: IconShape[] = [{ d: 'M4 20V10M10 20V4M16 20v-7M22 20H2' }];
-const ICON_CHEVRON: IconShape[] = [{ d: 'M6 9l6 6 6-6' }];
 const ICON_ARROW: IconShape[] = [{ d: 'M9 6l6 6-6 6' }];
-const ICON_PROFILE: IconShape[] = [
-  { circle: [12, 8, 4] },
-  { d: 'M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6' },
-];
-const ICON_LOGOUT: IconShape[] = [{ d: 'M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10' }];
 
 interface TileProps {
   icon: IconShape[];
@@ -168,7 +159,6 @@ export function HomeScreen() {
   const insets = useSafeAreaInsets();
   const [me, setMe] = useState<MeResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [userCounts, setUserCounts] = useState<{
     active: number;
@@ -288,7 +278,6 @@ export function HomeScreen() {
   }, []);
 
   async function handleLogout(): Promise<void> {
-    setMenuOpen(false);
     setLoggingOut(true);
     try {
       const session = await getSession();
@@ -366,45 +355,14 @@ export function HomeScreen() {
           </Text>
         </View>
 
-        <Pressable
-          accessibilityLabel={`Account menu — ${me?.name ?? ''}`}
-          onPress={() => setMenuOpen(true)}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 4,
-            height: 48,
-            paddingVertical: 2,
-            paddingLeft: 2,
-            paddingRight: 8,
-            borderRadius: 999,
-            borderWidth: 1,
-            borderColor: BORDER,
-            backgroundColor: '#FFFFFF',
-          }}
-          testID="home-avatar"
-        >
-          <View
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              backgroundColor: INK,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Text style={{ fontSize: 15, fontWeight: '700', color: '#FFFFFF' }}>
-              {initialsFor(me?.name)}
-            </Text>
-          </View>
-          <OutlineIcon
-            color={LABEL}
-            shapes={ICON_CHEVRON}
-            size={18}
-            strokeWidth={2.2}
-          />
-        </Pressable>
+        <AccountMenu
+          loggingOut={loggingOut}
+          name={me?.name}
+          onLogoutPress={() => void handleLogout()}
+          onProfilePress={() => navigation.navigate('Profile')}
+          roleLabel={me ? ROLE_LABELS[me.role] : ''}
+          testIDPrefix="home"
+        />
       </View>
 
       <ScrollView
@@ -556,94 +514,6 @@ export function HomeScreen() {
         onBeatsPress={() => navigation.navigate('BeatPlansList')}
         onShopsPress={() => navigation.navigate('ShopsList')}
       />
-
-      <Modal
-        animationType="fade"
-        onRequestClose={() => setMenuOpen(false)}
-        transparent
-        visible={menuOpen}
-      >
-        <Pressable onPress={() => setMenuOpen(false)} style={{ flex: 1 }}>
-          <View
-            style={{
-              position: 'absolute',
-              right: 20,
-              top: insets.top + 60,
-              width: 200,
-              backgroundColor: '#FFFFFF',
-              borderWidth: 1,
-              borderColor: BORDER,
-              borderRadius: 16,
-              padding: 6,
-              shadowColor: INK,
-              shadowOpacity: 0.16,
-              shadowRadius: 28,
-              shadowOffset: { width: 0, height: 12 },
-              elevation: 8,
-            }}
-          >
-            <View
-              style={{
-                paddingHorizontal: 12,
-                paddingTop: 10,
-                paddingBottom: 8,
-                borderBottomWidth: 1,
-                borderBottomColor: '#ECEFF4',
-                marginBottom: 4,
-              }}
-            >
-              <Text style={{ fontSize: 14, fontWeight: '700', color: INK }}>
-                {me?.name ?? ''}
-              </Text>
-              <Text style={{ fontSize: 12, color: MUTED }}>
-                {me ? ROLE_LABELS[me.role] : ''}
-              </Text>
-            </View>
-
-            <Pressable
-              onPress={() => {
-                setMenuOpen(false);
-                navigation.navigate('Profile');
-              }}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 10,
-                height: 44,
-                paddingHorizontal: 12,
-                borderRadius: 10,
-              }}
-              testID="home-menu-profile"
-            >
-              <OutlineIcon color={BLUE} shapes={ICON_PROFILE} size={18} />
-              <Text style={{ fontSize: 15, fontWeight: '600', color: INK }}>
-                Profile
-              </Text>
-            </Pressable>
-
-            <Pressable
-              disabled={loggingOut}
-              onPress={() => {
-                void handleLogout();
-              }}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 10,
-                height: 44,
-                paddingHorizontal: 12,
-                borderRadius: 10,
-              }}
-              testID="home-menu-logout"
-            >
-              <OutlineIcon color={DANGER} shapes={ICON_LOGOUT} size={18} />
-              <Text style={{ fontSize: 15, fontWeight: '600', color: DANGER }}>
-                {loggingOut ? 'Logging out…' : 'Log out'}
-              </Text>
-            </Pressable>
-          </View>
-        </Pressable>
-      </Modal>
     </View>
   );
 }

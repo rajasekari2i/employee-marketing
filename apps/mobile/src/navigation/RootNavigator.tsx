@@ -8,6 +8,7 @@ import { BeatPlanFormScreen } from '../features/admin/BeatPlanFormScreen';
 import { BeatPlansListScreen } from '../features/admin/BeatPlansListScreen';
 import { BrandsReasonsListScreen } from '../features/admin/BrandsReasonsListScreen';
 import { AddExtraShopScreen } from '../features/executive/AddExtraShopScreen';
+import { MyTotalsScreen } from '../features/executive/MyTotalsScreen';
 import { MyVisitsScreen } from '../features/executive/MyVisitsScreen';
 import { CaptureShopPinScreen } from '../features/executive/CaptureShopPinScreen';
 import { CreateShopFromFieldScreen } from '../features/executive/CreateShopFromFieldScreen';
@@ -17,7 +18,7 @@ import { ShopVisitScreen } from '../features/executive/ShopVisitScreen';
 import { TodaysBeatScreen } from '../features/executive/TodaysBeatScreen';
 import type { BeatPlanSummaryForEdit } from '../features/admin/BeatPlansListScreen';
 import { HomeScreen } from '../features/admin/HomeScreen';
-import { ProfileScreen } from '../features/admin/ProfileScreen';
+import { ProfileScreen } from '../features/profile/ProfileScreen';
 import { ShopFormScreen } from '../features/admin/ShopFormScreen';
 import { ShopsListScreen } from '../features/admin/ShopsListScreen';
 import type { ShopSummaryForEdit } from '../features/admin/ShopsListScreen';
@@ -161,6 +162,12 @@ export type ExecutiveStackParamList = {
   };
   /** 008-my-visits, PRD §4 screen 1.5 — the executive's own visit history. */
   MyVisits: undefined;
+  /** 009-my-totals, PRD §4 screen 1.6 — the executive's own figures by period. */
+  MyTotals: undefined;
+  /** PRD §4 screen 1.9 — the same ProfileScreen every role uses, reached from the account menu. */
+  Profile: undefined;
+  /** PRD §4 screen 1.10, "all users". */
+  ChangePassword: undefined;
   /** Board 4.9's form, reached from board 1.4's "Shop not listed — create new". */
   CreateShopFromField: {
     assignmentId: string;
@@ -299,6 +306,21 @@ function ExecutiveNavigator() {
       <ExecutiveStack.Screen
         name="RecordNoOrder"
         component={RecordNoOrderScreen}
+        options={{ headerShown: false }}
+      />
+      <ExecutiveStack.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{ headerShown: false }}
+      />
+      <ExecutiveStack.Screen
+        name="ChangePassword"
+        component={ChangePasswordScreen}
+        options={{ headerShown: false }}
+      />
+      <ExecutiveStack.Screen
+        name="MyTotals"
+        component={MyTotalsScreen}
         options={{ headerShown: false }}
       />
       <ExecutiveStack.Screen

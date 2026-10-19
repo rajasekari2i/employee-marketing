@@ -1,4 +1,4 @@
-import { Alert, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { OutlineIcon, type IconShape } from './icons/OutlineIcon';
 
@@ -7,10 +7,12 @@ import { OutlineIcon, type IconShape } from './icons/OutlineIcon';
  * (`docs/ui-design/Field_Sales_Beat_App.html` board 1.3).
  *
  * **Three** items, not the admin bar's four — Today · My visits · My totals.
- * All three render even though only Today is built, because omitting two
- * would visibly change the bar's spacing and proportions against the board,
- * and the standing fidelity rule is about the rendered result. The admin bar
- * already sets the precedent of a live bar with not-yet-built destinations.
+ * All three render and, as of 009-my-totals, **all three navigate**: the bar
+ * was built this way in slice 005 while only Today existed, because omitting
+ * two would visibly change its spacing and proportions against the board,
+ * and the standing fidelity rule is about the rendered result. Slice 008
+ * wired My visits, this slice wired My totals, and the `comingSoon` alert
+ * that stood in for them is gone.
  *
  * A sibling of `AdminBottomNav` rather than a parameterised shared component:
  * that one is written around the admin's own four-item set and route names,
@@ -34,10 +36,6 @@ const ICON_MY_TOTALS: IconShape[] = [
 ];
 
 export type ExecutiveBottomNavTab = 'Today' | 'MyVisits' | 'MyTotals';
-
-function comingSoon(feature: string): void {
-  Alert.alert(feature, 'This is coming in a later update.');
-}
 
 function NavItem({
   icon,
@@ -73,12 +71,15 @@ export function ExecutiveBottomNav({
   active,
   onTodayPress,
   onMyVisitsPress,
+  onMyTotalsPress,
   bottomInset = 0,
 }: {
   active: ExecutiveBottomNavTab | null;
   onTodayPress: () => void;
   /** 008-my-visits: board 1.5 is built, so this item navigates. */
   onMyVisitsPress: () => void;
+  /** 009-my-totals: board 1.6 is built, so this one does too — the bar is now fully live. */
+  onMyTotalsPress: () => void;
   bottomInset?: number;
 }) {
   return (
@@ -112,7 +113,7 @@ export function ExecutiveBottomNav({
         active={active === 'MyTotals'}
         icon={ICON_MY_TOTALS}
         label="My totals"
-        onPress={() => comingSoon('My totals')}
+        onPress={onMyTotalsPress}
       />
     </View>
   );

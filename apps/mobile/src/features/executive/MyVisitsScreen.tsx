@@ -471,6 +471,8 @@ export function MyVisitsScreen() {
       <ExecutiveBottomNav
         active="MyVisits"
         bottomInset={insets.bottom}
+        // 009-my-totals: board 1.6 is built, so this tab navigates too.
+        onMyTotalsPress={() => navigation.navigate('MyTotals')}
         onMyVisitsPress={() => undefined}
         onTodayPress={() => navigation.navigate('TodaysBeat')}
       />

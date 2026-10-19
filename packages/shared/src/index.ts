@@ -126,3 +126,6 @@ export type {
 
 export { myVisitsQuerySchema } from './my-visits.schema';
 export type { MyVisitsQuery } from './my-visits.schema';
+
+export { executiveTotalsQuerySchema } from './reports.schema';
+export type { ExecutiveTotalsQuery } from './reports.schema';

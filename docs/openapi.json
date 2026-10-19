@@ -1314,6 +1314,35 @@
           "visits"
         ]
       }
+    },
+    "/reports/executive-totals": {
+      "get": {
+        "operationId": "ReportsController_executiveTotals",
+        "parameters": [
+          {
+            "name": "period",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "THIS_WEEK",
+              "type": "string",
+              "enum": [
+                "TODAY",
+                "THIS_WEEK",
+                "THIS_MONTH"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "reports"
+        ]
+      }
     }
   },
   "info": {

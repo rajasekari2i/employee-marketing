@@ -12,6 +12,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { apiRequest, generateIdempotencyKey } from '../../api/client';
+import { ROLE_LABELS } from '../admin/adminDesign';
+import { AccountMenu } from '../../components/AccountMenu';
 import { ExecutiveBottomNav } from '../../components/ExecutiveBottomNav';
 import type { ExecutiveStackParamList } from '../../navigation/RootNavigator';
 import { DashedAction } from './DashedAction';
@@ -55,7 +57,6 @@ import {
   LOCKED_INK,
   MUTED,
   ON_BLUE_MUTED,
-  ROW_SEPARATOR,
   RUNNING_BG,
   RUNNING_BORDER,
   RUNNING_INK,
@@ -101,7 +102,6 @@ const ICON_WARN: IconShape[] = [
   { d: 'M12 3l10 18H2L12 3z' },
   { d: 'M12 10v5M12 18h.01' },
 ];
-const ICON_CHEVRON: IconShape[] = [{ d: 'M6 9l6 6 6-6' }];
 
 type BeatState = 'NOT_STARTED' | 'RUNNING' | 'ENDED';
 type Tab = 'todo' | 'done' | 'all';
@@ -180,7 +180,6 @@ export function TodaysBeatScreen() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('todo');
   const [confirmingEnd, setConfirmingEnd] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [name, setName] = useState<string | undefined>(undefined);
 
   // Ticks once a minute so the elapsed time stays current. The value itself
@@ -374,100 +373,15 @@ export function TodaysBeatScreen() {
                 <OutlineIcon color={INK} shapes={ICON_REFRESH} size={20} />
               </Pressable>
 
-              <Pressable
-                accessibilityLabel={`Account menu — ${name ?? ''}`}
-                onPress={() => setMenuOpen((open) => !open)}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 4,
-                  height: 48,
-                  paddingLeft: 2,
-                  paddingRight: 8,
-                  borderRadius: 999,
-                  borderWidth: 1,
-                  borderColor: BORDER,
-                  backgroundColor: '#FFFFFF',
-                }}
-              >
-                <View
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 22,
-                    backgroundColor: INK,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 15,
-                      fontWeight: '700',
-                      color: '#FFFFFF',
-                    }}
-                  >
-                    {initials(name)}
-                  </Text>
-                </View>
-                <OutlineIcon
-                  color="#3A4353"
-                  shapes={ICON_CHEVRON}
-                  size={18}
-                  strokeWidth={2.2}
-                />
-              </Pressable>
+              <AccountMenu
+                name={name}
+                onLogoutPress={() => void handleLogout()}
+                onProfilePress={() => navigation.navigate('Profile')}
+                roleLabel={ROLE_LABELS.MARKETING_EXECUTIVE}
+                testIDPrefix="executive"
+              />
             </View>
           </View>
-
-          {menuOpen ? (
-            <View
-              style={{
-                alignSelf: 'flex-end',
-                width: 200,
-                backgroundColor: '#FFFFFF',
-                borderWidth: 1,
-                borderColor: BORDER,
-                borderRadius: 16,
-                padding: 6,
-              }}
-            >
-              <View
-                style={{
-                  paddingHorizontal: 12,
-                  paddingTop: 10,
-                  paddingBottom: 8,
-                  borderBottomWidth: 1,
-                  borderBottomColor: ROW_SEPARATOR,
-                  marginBottom: 4,
-                }}
-              >
-                <Text style={{ fontSize: 14, fontWeight: '700', color: INK }}>
-                  {name ?? ''}
-                </Text>
-                <Text style={{ fontSize: 12, color: MUTED }}>
-                  Marketing Executive
-                </Text>
-              </View>
-              <Pressable
-                onPress={() => {
-                  setMenuOpen(false);
-                  void handleLogout();
-                }}
-                style={{
-                  height: 44,
-                  justifyContent: 'center',
-                  paddingHorizontal: 12,
-                }}
-              >
-                <Text
-                  style={{ fontSize: 15, fontWeight: '600', color: DANGER }}
-                >
-                  Log out
-                </Text>
-              </Pressable>
-            </View>
-          ) : null}
 
           {loading && !data ? null : assignment === null ? (
             <NoBeatCard reason={data?.noBeatReason ?? null} />
@@ -643,8 +557,10 @@ export function TodaysBeatScreen() {
       <ExecutiveBottomNav
         active="Today"
         bottomInset={insets.bottom}
-        // 008-my-visits: board 1.5 is built, so this tab navigates instead
-        // of raising the "coming in a later update" alert.
+        // 008-my-visits / 009-my-totals: both boards are built, so these
+        // tabs navigate instead of raising the "coming in a later update"
+        // alert — which no longer exists.
+        onMyTotalsPress={() => navigation.navigate('MyTotals')}
         onMyVisitsPress={() => navigation.navigate('MyVisits')}
         onTodayPress={() => void load()}
       />
@@ -1290,15 +1206,6 @@ function Chip({ label, bg, fg }: { label: string; bg: string; fg: string }) {
       </Text>
     </View>
   );
-}
-
-function initials(name: string | undefined): string {
-  const words = (name ?? '').trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return '?';
-  const first = words[0]?.charAt(0) ?? '';
-  const last =
-    words.length > 1 ? (words[words.length - 1]?.charAt(0) ?? '') : '';
-  return (first + last).toUpperCase();
 }
 
 function messageFor(err: unknown): string {

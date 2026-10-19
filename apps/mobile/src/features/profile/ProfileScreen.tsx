@@ -20,12 +20,16 @@ import {
   resolveFileUrl,
 } from '../../api/client';
 import { AdminBottomNav } from '../../components/AdminBottomNav';
+import { ExecutiveBottomNav } from '../../components/ExecutiveBottomNav';
 import {
   OutlineIcon,
   type IconShape,
 } from '../../components/icons/OutlineIcon';
 import { clearSession, getSession } from '../../lib/secureSession';
-import type { AdminStackParamList } from '../../navigation/RootNavigator';
+import type {
+  AdminStackParamList,
+  ExecutiveStackParamList,
+} from '../../navigation/RootNavigator';
 import {
   BG,
   BLUE,
@@ -35,7 +39,7 @@ import {
   MUTED,
   ROLE_LABELS,
   initialsFor,
-} from './adminDesign';
+} from '../admin/adminDesign';
 
 /**
  * PRD §4 screen 4.14 ("Profile · company admin"). Layout/colors/icons below
@@ -71,8 +75,19 @@ interface MeResponse {
   company: { code: string; name: string; timezone: string } | null;
 }
 
+/**
+ * This screen is registered in BOTH the admin and the executive stacks — it
+ * is one screen for every role (boards 1.9, 3.9 and 4.14 are identical) — so
+ * its navigation has to be able to name a destination in either. The
+ * intersection gives it the keys of both; at runtime it only ever navigates
+ * within whichever stack it was rendered from, because the branch that picks
+ * a destination is the same branch that picks the bottom bar.
+ *
+ * `Profile` and `ChangePassword` exist in both lists with the same (absent)
+ * params, so they intersect cleanly.
+ */
 type ProfileNavigationProp = NativeStackNavigationProp<
-  AdminStackParamList,
+  AdminStackParamList & ExecutiveStackParamList,
   'Profile'
 >;
 
@@ -578,13 +593,33 @@ export function ProfileScreen() {
         </View>
       </ScrollView>
 
-      <AdminBottomNav
-        active={null}
-        bottomInset={insets.bottom}
-        onHomePress={() => navigation.goBack()}
-        onBeatsPress={() => navigation.navigate('BeatPlansList')}
-        onShopsPress={() => navigation.navigate('ShopsList')}
-      />
+      {/*
+        One screen, every role — boards 1.9, 3.9 and 4.14 are identical apart
+        from the role label and this bar, and the label already comes from
+        /me. So the bar is the only thing that varies, and it varies on the
+        role /me returns rather than on a prop a caller could get wrong.
+
+        `active={null}` on both: PRD §4 records that "Profile is reached from
+        the avatar menu, not the bottom bar", and none of the three profile
+        boards marks a bar item as current.
+      */}
+      {me?.role === 'MARKETING_EXECUTIVE' ? (
+        <ExecutiveBottomNav
+          active={null}
+          bottomInset={insets.bottom}
+          onMyTotalsPress={() => navigation.navigate('MyTotals')}
+          onMyVisitsPress={() => navigation.navigate('MyVisits')}
+          onTodayPress={() => navigation.navigate('TodaysBeat')}
+        />
+      ) : (
+        <AdminBottomNav
+          active={null}
+          bottomInset={insets.bottom}
+          onHomePress={() => navigation.goBack()}
+          onBeatsPress={() => navigation.navigate('BeatPlansList')}
+          onShopsPress={() => navigation.navigate('ShopsList')}
+        />
+      )}
     </View>
   );
 }

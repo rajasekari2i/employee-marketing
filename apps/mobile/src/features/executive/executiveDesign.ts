@@ -163,3 +163,49 @@ export const DATE_BUTTON_HEIGHT = 40;
 
 /** The `ORD` / `NO` badge on a visit row: 36 square, radius 11, 11/800. */
 export const VISIT_BADGE_SIZE = 36;
+
+/**
+ * Board 1.6 ("My totals", uuid `ef79b256-19a4-4963-b087-47a8ee0a71f7`),
+ * decoded with the CLAUDE.md recipe.
+ *
+ * Almost every colour board 1.6 uses is already defined above at the same
+ * hex, so they are reused by name rather than redeclared: `BLUE` is the
+ * completion card, the Orders tile value, the brand bar fill and today's
+ * column; `ON_BLUE_MUTED` is that card's secondary copy; `BLUE_CHIP` is the
+ * progress track and `AMBER_ACCENT` its fill; `TAB_TRACK` is the period tab
+ * track and `SEGMENT_HEIGHT` its segment, identical to board 1.5's `.seg` at
+ * weight 700; `BORDER` is every card hairline; and `ROW_SEPARATOR` is both
+ * the brand row divider and the brand bar's own track.
+ */
+
+/** A day with orders that is not today, in the weekly chart. */
+export const CHART_BAR_INACTIVE = '#9DB5F0';
+
+/** The weekly chart card's fixed height. */
+export const CHART_CARD_HEIGHT = 110;
+
+/** The tallest a weekly column's bar gets — the busiest day of the week. */
+export const CHART_BAR_MAX_HEIGHT = 54;
+
+/** The completion percentage on the blue card. */
+export const COMPLETION_RATE_SIZE = 30;
+
+/**
+ * `1,286` / `5,742` / `1,28,600` — Indian digit grouping, which is what
+ * board 1.6 uses (`toLocaleString('en-IN')`).
+ *
+ * Written out rather than delegated to `Intl`: Hermes ships a reduced ICU
+ * and `toLocaleString` can quietly ignore the locale there, which would
+ * silently switch the grouping to thousands on device while looking correct
+ * in any JS console. The rule is the last three digits, then pairs.
+ */
+export function formatQuantity(value: number): string {
+  const digits = Math.abs(Math.trunc(value)).toString();
+  const sign = value < 0 ? '-' : '';
+  if (digits.length <= 3) {
+    return `${sign}${digits}`;
+  }
+  const last3 = digits.slice(-3);
+  const rest = digits.slice(0, -3);
+  return `${sign}${rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',')},${last3}`;
+}
