@@ -15,6 +15,19 @@
       android:name="android.permission.READ_EXTERNAL_STORAGE"
       android:maxSdkVersion="32" />
 
+    <!-- 005-executive-dashboard: starting and ending a beat each capture the
+         executive's position (FR-014) — the first time this app reads the
+         device's own location at all. Before this slice the only mapping was
+         an admin tapping a point on a map, which needs no permission.
+
+         COARSE is declared alongside FINE deliberately (research.md §3):
+         Android 12+ lets the user grant approximate location only, and
+         without COARSE declared that choice fails outright instead of
+         returning the low-accuracy fix FR-014 explicitly wants to accept and
+         record rather than block. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <!-- 015-notifications (not yet built, CLAUDE.md build order) will need
          this to push visit/exception alerts. Declared now, on its own, so
          the OS exposes a real Settings > Notifications toggle for this app

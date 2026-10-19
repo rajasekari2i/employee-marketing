@@ -40,6 +40,14 @@ export const ERROR_CODES = [
   // (FR-011/FR-013). A server-side rejection, not merely a control the UI
   // hides.
   'SYSTEM_REASON_IMMUTABLE',
+  // 005-executive-dashboard, contracts/assignments.md: the two transitions
+  // the beat-day state machine has no arrow for. A repeated start on a
+  // RUNNING day, or a repeated end on an ENDED one, is NOT an error — it
+  // returns the current day with 200 (FR-021). These two cover the genuinely
+  // illegal moves, and get their own codes so the app can say something
+  // specific rather than "something went wrong".
+  'BEAT_DAY_ENDED',
+  'BEAT_NOT_STARTED',
   'IDEMPOTENCY_KEY_REUSED',
   'OTP_INCORRECT',
   'OTP_EXPIRED',
@@ -76,6 +84,8 @@ export const ERROR_STATUS: Readonly<Record<ErrorCode, number>> = {
   DUPLICATE_BRAND_LABEL: 409,
   DUPLICATE_REASON_LABEL: 409,
   SYSTEM_REASON_IMMUTABLE: 409,
+  BEAT_DAY_ENDED: 409,
+  BEAT_NOT_STARTED: 409,
   OTP_INCORRECT: 400,
   OTP_EXPIRED: 410,
   OTP_ATTEMPTS_EXHAUSTED: 429,
@@ -102,6 +112,8 @@ export const ERROR_TITLES: Readonly<Record<ErrorCode, string>> = {
   DUPLICATE_BRAND_LABEL: 'Brand label already taken',
   DUPLICATE_REASON_LABEL: 'Reason label already taken',
   SYSTEM_REASON_IMMUTABLE: 'The "Other" reason cannot be changed',
+  BEAT_DAY_ENDED: 'Beat day already ended',
+  BEAT_NOT_STARTED: 'Beat day not started',
   OTP_INCORRECT: 'Incorrect OTP',
   OTP_EXPIRED: 'OTP expired',
   OTP_ATTEMPTS_EXHAUSTED: 'OTP attempts exhausted',

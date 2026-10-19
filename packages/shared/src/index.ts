@@ -107,3 +107,6 @@ export type {
   UpdateReasonInput,
   ReorderInput,
 } from './masters.schema';
+
+export { startBeatSchema, endBeatSchema } from './assignments.schema';
+export type { StartBeatInput, EndBeatInput } from './assignments.schema';

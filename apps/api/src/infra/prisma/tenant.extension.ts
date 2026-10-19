@@ -54,6 +54,16 @@ export const TENANT_MODELS = new Set<string>([
   // (`20261019093018_rls_masters/migration.sql`) for Layer 2.
   'Brand',
   'ReasonMessage',
+  // 005-executive-dashboard: both new tenant tables, same reasoning as the
+  // entries above — registered alongside their real writer
+  // (AssignmentsService). See the sibling RLS migration
+  // (`20261019140018_rls_assignments/migration.sql`) for Layer 2.
+  //
+  // Note this layer scopes by COMPANY only. Keeping one executive out of
+  // another executive's day inside the same company is a separate, explicit
+  // narrowing done in AssignmentsService — never left to this Set.
+  'DailyAssignment',
+  'AssignmentStop',
 ]);
 
 /** Operations whose `where` clause must be narrowed to the tenant. */

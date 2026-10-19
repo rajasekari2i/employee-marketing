@@ -59,6 +59,39 @@ enum PinChangeStatus {
   DECIDED
 }
 
+// 005-executive-dashboard (data-model.md "Enums"). Two different rules are at
+// work in the three enums below, deliberately:
+//
+// BeatDayStatus OMITS the architecture's AUTO_CLOSED. Nothing in this slice
+// can set it — auto-closing a forgotten beat needs a scheduled-job runtime
+// that does not exist — and nothing reads it. Added additively by the slice
+// that implements auto-close, the same posture 002-shops-crud took when it
+// declared only the LocationSource values it could reach.
+//
+// StopStatus and StopSource DO declare their full sets even though only
+// PENDING and PLAN have writers today, because this slice's own code *reads*
+// the others: the list ordering puts REVISIT between to-do and completed
+// (FR-011), the running card counts Revisit and Extra (FR-017), and board 1.3
+// draws a chip for each. Declaring them is what lets that logic be written
+// once, correctly, now.
+enum BeatDayStatus {
+  RUNNING
+  ENDED
+}
+
+enum StopStatus {
+  PENDING
+  COMPLETED
+  SKIPPED
+  REVISIT
+}
+
+enum StopSource {
+  PLAN
+  EXEC_EXTRA
+  MANAGER_EXTRA
+}
+
 // ---------------------------------------------------------------------------
 // Company & settings (T008, T009)
 // ---------------------------------------------------------------------------
@@ -152,14 +185,16 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  company       Company?         @relation(fields: [companyId], references: [id])
-  role          Role             @relation(fields: [roleId], references: [id])
-  photo         FileObject?      @relation(fields: [photoId], references: [id])
-  salaryRates   UserSalaryRate[]
-  refreshTokens RefreshToken[]
-  otpChallenges OtpChallenge[]
+  company           Company?          @relation(fields: [companyId], references: [id])
+  role              Role              @relation(fields: [roleId], references: [id])
+  photo             FileObject?       @relation(fields: [photoId], references: [id])
+  salaryRates       UserSalaryRate[]
+  refreshTokens     RefreshToken[]
+  otpChallenges     OtpChallenge[]
   // 003-beat-plans-crud: the reverse side of BeatPlan.executiveId.
   assignedBeatPlans BeatPlan[]
+  // 005-executive-dashboard: the reverse side of DailyAssignment.executiveId.
+  assignments       DailyAssignment[]
 
   @@unique([companyId, username])
   @@index([companyId, status])
@@ -247,7 +282,7 @@ model FileObject {
   uploadedBy String   @map("uploaded_by")
   createdAt  DateTime @default(now()) @map("created_at")
 
-  user User?
+  user       User?
   // 002-shops-crud: the reverse side of ShopPhoto.fileId.
   shopPhotos ShopPhoto[]
 
@@ -331,10 +366,12 @@ model Shop {
 
   isActive Boolean @default(true) @map("is_active")
 
-  photos     ShopPhoto[]
-  pinChanges ShopPinChange[]
+  photos          ShopPhoto[]
+  pinChanges      ShopPinChange[]
   // 003-beat-plans-crud: the reverse side of BeatPlanShop.shopId.
-  beatPlanShops BeatPlanShop[]
+  beatPlanShops   BeatPlanShop[]
+  // 005-executive-dashboard: the reverse side of AssignmentStop.shopId.
+  assignmentStops AssignmentStop[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -375,15 +412,15 @@ model ShopPinChange {
 
   status PinChangeStatus @default(REQUESTED)
 
-  fromLatitude  Decimal? @db.Decimal(9, 6) @map("from_latitude")
-  fromLongitude Decimal? @db.Decimal(9, 6) @map("from_longitude")
-  toLatitude    Decimal  @db.Decimal(9, 6) @map("to_latitude")
-  toLongitude   Decimal  @db.Decimal(9, 6) @map("to_longitude")
+  fromLatitude  Decimal?       @map("from_latitude") @db.Decimal(9, 6)
+  fromLongitude Decimal?       @map("from_longitude") @db.Decimal(9, 6)
+  toLatitude    Decimal        @map("to_latitude") @db.Decimal(9, 6)
+  toLongitude   Decimal        @map("to_longitude") @db.Decimal(9, 6)
   source        LocationSource
 
-  requestedBy String   @map("requested_by")
-  requestedAt DateTime @default(now()) @map("requested_at")
-  decidedBy   String?  @map("decided_by")
+  requestedBy String    @map("requested_by")
+  requestedAt DateTime  @default(now()) @map("requested_at")
+  decidedBy   String?   @map("decided_by")
   decidedAt   DateTime? @map("decided_at")
 
   @@index([companyId, shopId, status])
@@ -415,6 +452,9 @@ model BeatPlan {
   isActive Boolean @default(true) @map("is_active")
 
   shops BeatPlanShop[]
+
+  // 005-executive-dashboard: the reverse side of DailyAssignment.beatPlanId.
+  assignments DailyAssignment[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -516,4 +556,101 @@ model ReasonMessage {
   @@unique([companyId, label])
   @@index([companyId, isActive, displayOrder])
   @@map("reason_messages")
+}
+
+// ---------------------------------------------------------------------------
+// Daily assignment & beat day (005-executive-dashboard)
+// ---------------------------------------------------------------------------
+
+// One row per executive per business day. Holds BOTH the frozen route and the
+// beat-day lifecycle, so "is the beat running?" is a single field on the row
+// the screen has already loaded — no join, no second query (Architecture §9).
+//
+// `status` is null until the beat starts, which is what makes the three-state
+// lifecycle (not started / RUNNING / ENDED) a single nullable column.
+//
+// The @@unique([companyId, businessDate, executiveId]) below is LOAD-BEARING,
+// not tidiness: it is the entire concurrency guarantee behind creating the
+// route on first open (research.md §1). Two devices, a double tap and a
+// refresh storm all converge on one row because the database refuses the
+// second insert, and the service treats that refusal as "re-read the winner".
+model DailyAssignment {
+  id        String @id @default(uuid())
+  companyId String @map("company_id")
+
+  // The company-LOCAL calendar date, from CompanyClock — never the device
+  // clock (FR-005). @db.Date so it carries no time component that could be
+  // shifted across timezones.
+  businessDate DateTime @map("business_date") @db.Date
+
+  executiveId String @map("executive_id")
+  executive   User   @relation(fields: [executiveId], references: [id])
+
+  beatPlanId String?   @map("beat_plan_id")
+  beatPlan   BeatPlan? @relation(fields: [beatPlanId], references: [id])
+
+  // Snapshot of the plan's name at creation (FR-007) — renaming the plan
+  // later never rewrites a past day's card.
+  beatPlanName String? @map("beat_plan_name")
+
+  status BeatDayStatus?
+
+  startedAt           DateTime? @map("started_at")
+  startLatitude       Decimal?  @map("start_latitude") @db.Decimal(9, 6)
+  startLongitude      Decimal?  @map("start_longitude") @db.Decimal(9, 6)
+  startAccuracyMeters Int?      @map("start_accuracy_meters")
+
+  endedAt           DateTime? @map("ended_at")
+  endLatitude       Decimal?  @map("end_latitude") @db.Decimal(9, 6)
+  endLongitude      Decimal?  @map("end_longitude") @db.Decimal(9, 6)
+  endAccuracyMeters Int?      @map("end_accuracy_meters")
+
+  stops AssignmentStop[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([companyId, businessDate, executiveId])
+  @@index([companyId, businessDate])
+  @@index([companyId, executiveId, businessDate])
+  @@map("daily_assignments")
+}
+
+// One shop's place on one day's route — a frozen snapshot, not a live view of
+// the beat plan. A later edit to the plan, the shop or company settings never
+// alters a stop that already exists (FR-007).
+//
+// `effectiveRadiusMeters` is stored here but NEVER serialised to an executive
+// (data-model.md "What never reaches the executive"): it is the threshold
+// every range verdict is computed against, so sending it would let the device
+// derive "am I inside the radius?" — the inference Constitution rule 6 exists
+// to prevent. The server needs it when visit submission is built.
+model AssignmentStop {
+  id        String @id @default(uuid())
+  companyId String @map("company_id")
+
+  assignmentId String          @map("assignment_id")
+  assignment   DailyAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  shopId String @map("shop_id")
+  shop   Shop   @relation(fields: [shopId], references: [id])
+
+  sequence Int
+  source   StopSource @default(PLAN)
+  status   StopStatus @default(PENDING)
+
+  addedByUserId String?   @map("added_by_user_id")
+  addedAt       DateTime? @map("added_at")
+
+  effectiveRadiusMeters Int @map("effective_radius_meters")
+
+  // Deliberately tighter than the architecture's
+  // @@unique([assignmentId, shopId, sequence]): that three-column form would
+  // let the same shop appear twice on one day at two sequence numbers, which
+  // contradicts BUS-08 ("at most one completed primary outcome per shop per
+  // executive per day"). Two columns make the duplicate unrepresentable, and
+  // match the @@unique([beatPlanId, shopId]) precedent on BeatPlanShop.
+  @@unique([assignmentId, shopId])
+  @@index([companyId, assignmentId, status])
+  @@index([companyId, shopId])
+  @@map("assignment_stops")
 }

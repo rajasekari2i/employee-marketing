@@ -1,0 +1,120 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import { createZodDto } from 'nestjs-zod';
+import { AppError, endBeatSchema, startBeatSchema } from '@field-sales/shared';
+
+import { Audited } from '../../common/decorators/audited.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import type { AuthenticatedRequest } from '../../common/guards/jwt-auth.guard';
+import { RequireIdempotencyKeyGuard } from '../../common/guards/require-idempotency-key.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { AssignmentsService } from './assignments.service';
+
+class StartBeatDto extends createZodDto(startBeatSchema) {}
+class EndBeatDto extends createZodDto(endBeatSchema) {}
+
+/**
+ * 005-executive-dashboard / contracts/assignments.md. Marketing Executive
+ * only, and every route is additionally scoped to the caller's **own**
+ * executive id taken from the verified JWT — never from a path or query
+ * parameter — so company-level tenant isolation is never what keeps one
+ * executive out of another's day.
+ *
+ * The manager/admin variant (`GET /assignments?date=&executiveId=`) is
+ * deliberately not here; it belongs to the manager review feature.
+ */
+@ApiTags('assignments')
+@Controller('assignments')
+@UseGuards(RolesGuard)
+@Roles('MARKETING_EXECUTIVE')
+export class AssignmentsController {
+  constructor(private readonly assignmentsService: AssignmentsService) {}
+
+  /**
+   * **This read may write.** When no route exists for the caller's
+   * company-local business date and their beat plan covers today, the service
+   * creates it and returns it (research.md §1 — the chosen alternative to an
+   * overnight job).
+   *
+   * It deliberately takes **no** `Idempotency-Key`: the write is idempotent by
+   * construction via the unique index on
+   * `(companyId, businessDate, executiveId)`, so a race loses the insert and
+   * re-reads the winner. This is the only read in this codebase permitted to
+   * write.
+   *
+   * It also takes no date parameter — accepting one from the client is exactly
+   * the bug FR-005 exists to prevent.
+   */
+  @Get('today')
+  today(@Req() request: AuthenticatedRequest) {
+    return this.assignmentsService.getToday(
+      this.requireCompanyId(request),
+      this.requireExecutiveId(request),
+    );
+  }
+
+  /** Returns `200`, not `201` — a repeated start is an expected outcome, not a creation. */
+  @Post(':id/start')
+  @UseGuards(RequireIdempotencyKeyGuard)
+  @Audited('beat-day.start', 'DailyAssignment')
+  start(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: StartBeatDto,
+  ) {
+    return this.assignmentsService.start(
+      this.requireCompanyId(request),
+      this.requireExecutiveId(request),
+      id,
+      body,
+    );
+  }
+
+  @Post(':id/end')
+  @UseGuards(RequireIdempotencyKeyGuard)
+  @Audited('beat-day.end', 'DailyAssignment')
+  end(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: EndBeatDto,
+  ) {
+    return this.assignmentsService.end(
+      this.requireCompanyId(request),
+      this.requireExecutiveId(request),
+      id,
+      body,
+    );
+  }
+
+  /** `@Roles('MARKETING_EXECUTIVE')` already guarantees a tenant companyId — defensive, same posture as the other controllers. */
+  private requireCompanyId(request: AuthenticatedRequest): string {
+    const companyId = request.user?.companyId;
+    if (!companyId) {
+      throw new AppError(
+        'FORBIDDEN_ROLE',
+        'This action requires a company-scoped account.',
+      );
+    }
+    return companyId;
+  }
+
+  /** The caller's own user id (`sub`). The second scope, enforced on every route. */
+  private requireExecutiveId(request: AuthenticatedRequest): string {
+    const executiveId = request.user?.sub;
+    if (!executiveId) {
+      throw new AppError(
+        'FORBIDDEN_ROLE',
+        'This action requires a signed-in user.',
+      );
+    }
+    return executiveId;
+  }
+}

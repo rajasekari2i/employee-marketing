@@ -7,6 +7,7 @@ import type { RoleKey, UserStatus } from '@field-sales/shared';
 import { BeatPlanFormScreen } from '../features/admin/BeatPlanFormScreen';
 import { BeatPlansListScreen } from '../features/admin/BeatPlansListScreen';
 import { BrandsReasonsListScreen } from '../features/admin/BrandsReasonsListScreen';
+import { TodaysBeatScreen } from '../features/executive/TodaysBeatScreen';
 import type { BeatPlanSummaryForEdit } from '../features/admin/BeatPlansListScreen';
 import { HomeScreen } from '../features/admin/HomeScreen';
 import { ProfileScreen } from '../features/admin/ProfileScreen';
@@ -118,12 +119,18 @@ export type AdminStackParamList = {
   BrandsReasonsList: undefined;
 };
 
+/** 005-executive-dashboard, PRD §4 screen 1.3. The executive's only built destination so far; the bottom bar's other two tabs are rendered but not yet navigable. */
+export type ExecutiveStackParamList = {
+  TodaysBeat: undefined;
+};
+
 export type ComingSoonStackParamList = {
   ComingSoon: undefined;
 };
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AdminStack = createNativeStackNavigator<AdminStackParamList>();
+const ExecutiveStack = createNativeStackNavigator<ExecutiveStackParamList>();
 const ComingSoonStack = createNativeStackNavigator<ComingSoonStackParamList>();
 
 /** DoD item 5: `MANAGER`/`MARKETING_EXECUTIVE` (and any other non-Admin role) land here — their own stacks are out of this story's scope. */
@@ -227,12 +234,28 @@ function ComingSoonNavigator() {
   );
 }
 
+function ExecutiveNavigator() {
+  return (
+    <ExecutiveStack.Navigator>
+      <ExecutiveStack.Screen
+        name="TodaysBeat"
+        component={TodaysBeatScreen}
+        options={{ headerShown: false }}
+      />
+    </ExecutiveStack.Navigator>
+  );
+}
+
 function stackForRole(role: RoleKey) {
   if (role === 'COMPANY_ADMIN') {
     return <AdminNavigator />;
   }
-  // MANAGER, MARKETING_EXECUTIVE, SYSTEM_ADMIN (no mobile screens at all,
-  // PRD §4), and anything else all share the same placeholder.
+  // 005-executive-dashboard: the executive now has their own stack.
+  if (role === 'MARKETING_EXECUTIVE') {
+    return <ExecutiveNavigator />;
+  }
+  // MANAGER and SYSTEM_ADMIN (no mobile screens at all, PRD §4), and
+  // anything else, still share the placeholder.
   return <ComingSoonNavigator />;
 }
 

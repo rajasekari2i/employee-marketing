@@ -987,6 +987,86 @@
           "reasons"
         ]
       }
+    },
+    "/assignments/today": {
+      "get": {
+        "operationId": "AssignmentsController_today",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "assignments"
+        ]
+      }
+    },
+    "/assignments/{id}/start": {
+      "post": {
+        "operationId": "AssignmentsController_start",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartBeatDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "assignments"
+        ]
+      }
+    },
+    "/assignments/{id}/end": {
+      "post": {
+        "operationId": "AssignmentsController_end",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EndBeatDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "assignments"
+        ]
+      }
     }
   },
   "info": {
@@ -1725,6 +1805,74 @@
             "type": "boolean"
           }
         }
+      },
+      "StartBeatDto": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "minimum": -90,
+            "exclusiveMinimum": false,
+            "maximum": 90,
+            "exclusiveMaximum": false
+          },
+          "longitude": {
+            "type": "number",
+            "minimum": -180,
+            "exclusiveMinimum": false,
+            "maximum": 180,
+            "exclusiveMaximum": false
+          },
+          "accuracyMeters": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": false
+          },
+          "capturedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude",
+          "accuracyMeters",
+          "capturedAt"
+        ]
+      },
+      "EndBeatDto": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "minimum": -90,
+            "exclusiveMinimum": false,
+            "maximum": 90,
+            "exclusiveMaximum": false
+          },
+          "longitude": {
+            "type": "number",
+            "minimum": -180,
+            "exclusiveMinimum": false,
+            "maximum": 180,
+            "exclusiveMaximum": false
+          },
+          "accuracyMeters": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": false
+          },
+          "capturedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude",
+          "accuracyMeters",
+          "capturedAt"
+        ]
       }
     }
   }
