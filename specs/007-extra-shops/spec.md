@@ -132,9 +132,14 @@ Having added the shop, the executive taps it on today's list and records an orde
 - **FR-021**: The distance shown on this screen is the executive's distance to a shop they are choosing. It MUST NOT be, and MUST NOT be presented as, the distance a visit is measured at. The rule that an executive is never shown a visit's measured distance, its range verdict or any quality flag MUST remain unbroken by this feature.
 - **FR-022**: Nothing the device sends MUST be able to influence what the server records for a stop or a visit — the radius, the frozen location, the measured distance and the flags remain the server's alone.
 
+#### Working without a connection
+
+- **FR-023**: An add submitted without a connection MUST be accepted, held on the device, and shown as waiting to sync — never reported as a failure and never discarded. Held adds MUST survive the app being closed and reopened, and MUST carry the same unique key from the moment they are recorded so a retry adds the shop exactly once.
+- **FR-024**: Choosing a shop MUST require a connection, because the list of shops that can be added is read from the server. When there is none, the executive MUST be told that plainly rather than shown an empty list. A shop whose add is still waiting to sync MUST be shown as waiting rather than as a stop that can be opened.
+
 #### Fidelity
 
-- **FR-023**: Every screen in this feature MUST visually match its board in `docs/ui-design/Field_Sales_Beat_App.html` — section 1.4, and the added action on section 1.3 — exactly in colors, spacing, typography, icon shapes, border radii and layout, with no approximated placeholders.
+- **FR-025**: Every screen in this feature MUST visually match its board in `docs/ui-design/Field_Sales_Beat_App.html` — section 1.4, and the added action on section 1.3 — exactly in colors, spacing, typography, icon shapes, border radii and layout, with no approximated placeholders.
 
 ### Key Entities
 
@@ -158,6 +163,7 @@ Having added the shop, the executive taps it on today's list and records an orde
 - **SC-008**: 100% of extra stops accept outcomes, distance measurement and review routing identically to planned stops, and carry their source through to reporting.
 - **SC-009**: Zero cross-executive leakage: an executive can only ever add a stop to their own day for today.
 - **SC-010**: 100% of adds appear in the company's audit trail with the acting executive.
+- **SC-011**: 100% of adds submitted without a connection are eventually recorded on the server, with zero lost to an app restart and zero recorded twice.
 
 ## Assumptions
 
@@ -168,7 +174,7 @@ Having added the shop, the executive taps it on today's list and records an orde
 
 ### Resolutions of conflicts found in the product documentation
 
-- **Open decision OD-08 is taken as its documented default.** The business requirements record "Does the executive's extra shop need manager approval first?" as answered "No; added immediately and shown to the manager as an extra visit", but still marked *needs client confirmation*. The design agrees — the board's button adds the shop to today's list with no approval step — so this feature implements immediate addition. **If the client confirms otherwise, this feature changes shape**, so it is called out rather than quietly assumed.
+- **Open decision OD-08 is taken as its documented default, which three sources agree on.** The business requirements record "Does the executive's extra shop need manager approval first?" as answered "No; added immediately and shown to the manager as an extra visit", but still marked *needs client confirmation*. The architecture resolves the same question as "No for release 1; flag it as an extra visit", and the design agrees — the board's button adds the shop to today's list with no approval step anywhere on the screen. This feature therefore implements immediate addition. It stays listed here because "needs client confirmation" is the client's word to give; what has changed is that the default is well-supported rather than merely assumed. **If the client confirms otherwise, this feature changes shape.**
 - **A shop created by an executive may not be immediately visitable.** FR-EXTRA-04 requires executive-created shops to be marked for Company Admin review, while recording any outcome requires an *approved* shop location. Whether the executive can record an outcome at the shop they just created therefore depends on the same company auto-approval setting already flagged in the previous feature. **With auto-approval off, an executive can create a shop but not record anything at it** — the same dead-end, now reachable by a second route, and the same recommendation applies: the pilot company should have auto-approval enabled.
 - **"Marked for Company Admin review" uses the location-approval state that already exists** rather than introducing a separate shop-review queue. The admin sees the shop with its location awaiting confirmation. A dedicated review surface for executive-created shops is a Company Admin feature, not this one.
 
@@ -178,7 +184,8 @@ Having added the shop, the executive taps it on today's list and records an orde
 - **Removing an extra stop is out of scope.** Nothing in the design or the requirements offers it, and a stop that can be silently removed would undermine the day's record. A stop added by mistake stays on the day, unvisited.
 - **Reordering today's list is out of scope.** Extra stops take their place by the existing ordering rules.
 - **The Company Admin's review surface for executive-created shops is out of scope** (see above).
-- **Adding an extra shop while offline is out of scope for this slice**, and is the one place this feature does not meet the product's "assume a bad network" rule. The reason is that the picker is inherently a server read — the nearest shops in the company's directory, excluding the ones already on today's list — so there is nothing useful to show without a connection, and an add queued against a stop that does not exist yet cannot be visited until it syncs, which is the opposite of what the executive needs. **This is flagged for a decision rather than silently dropped**; making it work offline means caching the shop directory on the device and letting the app mint a stop the server later adopts, which is a feature in its own right.
+- **Browsing shops offline is out of scope; adding offline is not.** The architecture names extra-shop addition as one of the four queueable commands, so a submitted add is held on the device and syncs exactly once (FR-023). The *picker* is a read, which the same rule says is never queued — so the screen still needs a connection to be useful (FR-024). Caching the shop directory for offline browsing is a separate concern.
+- **A stop added while offline cannot be visited until it syncs**, because the identity a visit is recorded against is the server's. The executive sees it as waiting rather than as a stop they can open. Closing that gap would mean letting the device mint an identity the server adopts — a change to how visits are recorded, not to this feature.
 
 ### Reasonable defaults
 
