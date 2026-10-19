@@ -6,6 +6,7 @@ import type { RoleKey, UserStatus } from '@field-sales/shared';
 
 import { BeatPlanFormScreen } from '../features/admin/BeatPlanFormScreen';
 import { BeatPlansListScreen } from '../features/admin/BeatPlansListScreen';
+import { BrandsReasonsListScreen } from '../features/admin/BrandsReasonsListScreen';
 import type { BeatPlanSummaryForEdit } from '../features/admin/BeatPlansListScreen';
 import { HomeScreen } from '../features/admin/HomeScreen';
 import { ProfileScreen } from '../features/admin/ProfileScreen';
@@ -113,6 +114,8 @@ export type AdminStackParamList = {
   BeatPlansList: undefined;
   /** 003-beat-plans-crud, PRD §4 screen 4.7. `undefined` means "create a new beat plan," same convention as `UserForm`/`ShopForm` above. */
   BeatPlanForm: { beatPlan?: BeatPlanSummaryForEdit } | undefined;
+  /** 004-brands-reasons-crud, PRD §4 screen 4.12. One screen, two tabs — no separate form screen; rows are added, reordered and toggled in place. */
+  BrandsReasonsList: undefined;
 };
 
 export type ComingSoonStackParamList = {
@@ -201,6 +204,11 @@ function AdminNavigator() {
       <AdminStack.Screen
         name="BeatPlanForm"
         component={BeatPlanFormScreen}
+        options={{ headerShown: false }}
+      />
+      <AdminStack.Screen
+        name="BrandsReasonsList"
+        component={BrandsReasonsListScreen}
         options={{ headerShown: false }}
       />
     </AdminStack.Navigator>

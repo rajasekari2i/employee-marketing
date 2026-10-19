@@ -48,6 +48,12 @@ export const TENANT_MODELS = new Set<string>([
   // (`<timestamp>_rls_beat_plans/migration.sql`) for Layer 2.
   'BeatPlan',
   'BeatPlanShop',
+  // 004-brands-reasons-crud: both new master tables, same reasoning as the
+  // entries above — registered alongside their real writers (BrandsService,
+  // ReasonsService). See the sibling RLS migration
+  // (`20261019093018_rls_masters/migration.sql`) for Layer 2.
+  'Brand',
+  'ReasonMessage',
 ]);
 
 /** Operations whose `where` clause must be narrowed to the tenant. */

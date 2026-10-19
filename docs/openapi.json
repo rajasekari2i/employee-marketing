@@ -546,6 +546,15 @@
                 "false"
               ]
             }
+          },
+          {
+            "name": "beatPlanId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -790,6 +799,192 @@
         },
         "tags": [
           "beat-plans"
+        ]
+      }
+    },
+    "/brands": {
+      "get": {
+        "operationId": "BrandsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "brands"
+        ]
+      },
+      "post": {
+        "operationId": "BrandsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBrandDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "brands"
+        ]
+      }
+    },
+    "/brands/order": {
+      "patch": {
+        "operationId": "BrandsController_reorder",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderBrandsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "brands"
+        ]
+      }
+    },
+    "/brands/{id}": {
+      "patch": {
+        "operationId": "BrandsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBrandDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "brands"
+        ]
+      }
+    },
+    "/reasons": {
+      "get": {
+        "operationId": "ReasonsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "reasons"
+        ]
+      },
+      "post": {
+        "operationId": "ReasonsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReasonDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "reasons"
+        ]
+      }
+    },
+    "/reasons/order": {
+      "patch": {
+        "operationId": "ReasonsController_reorder",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderReasonsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "reasons"
+        ]
+      }
+    },
+    "/reasons/{id}": {
+      "patch": {
+        "operationId": "ReasonsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateReasonDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "reasons"
         ]
       }
     }
@@ -1446,6 +1641,88 @@
               "type": "string",
               "minLength": 1
             }
+          }
+        }
+      },
+      "CreateBrandDto": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 60
+          }
+        },
+        "required": [
+          "label"
+        ]
+      },
+      "ReorderBrandsDto": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "required": [
+          "ids"
+        ]
+      },
+      "UpdateBrandDto": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 60
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CreateReasonDto": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 60
+          }
+        },
+        "required": [
+          "label"
+        ]
+      },
+      "ReorderReasonsDto": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "required": [
+          "ids"
+        ]
+      },
+      "UpdateReasonDto": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 60
+          },
+          "isActive": {
+            "type": "boolean"
           }
         }
       }

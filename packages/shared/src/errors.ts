@@ -28,6 +28,18 @@ export const ERROR_CODES = [
   // 003-beat-plans-crud, contracts/beat-plans.md: a beat plan's code is
   // unique per company (FR-010) — same shape as DUPLICATE_SHOP_CODE above.
   'DUPLICATE_BEAT_PLAN_CODE',
+  // 004-brands-reasons-crud, contracts/masters.md: a brand's and a reason's
+  // label are each unique per company, compared case-insensitively and
+  // whitespace-trimmed (FR-007) — same shape as DUPLICATE_BEAT_PLAN_CODE
+  // above. The two lists are separate tables, so the same text may exist
+  // once in each (FR-008) and gets its own code either way.
+  'DUPLICATE_BRAND_LABEL',
+  'DUPLICATE_REASON_LABEL',
+  // 004-brands-reasons-crud: every company has exactly one system "Other"
+  // reason, which can never be deactivated, reordered or relabelled
+  // (FR-011/FR-013). A server-side rejection, not merely a control the UI
+  // hides.
+  'SYSTEM_REASON_IMMUTABLE',
   'IDEMPOTENCY_KEY_REUSED',
   'OTP_INCORRECT',
   'OTP_EXPIRED',
@@ -61,6 +73,9 @@ export const ERROR_STATUS: Readonly<Record<ErrorCode, number>> = {
   COMPANY_CODE_TAKEN: 409,
   DUPLICATE_SHOP_CODE: 409,
   DUPLICATE_BEAT_PLAN_CODE: 409,
+  DUPLICATE_BRAND_LABEL: 409,
+  DUPLICATE_REASON_LABEL: 409,
+  SYSTEM_REASON_IMMUTABLE: 409,
   OTP_INCORRECT: 400,
   OTP_EXPIRED: 410,
   OTP_ATTEMPTS_EXHAUSTED: 429,
@@ -84,6 +99,9 @@ export const ERROR_TITLES: Readonly<Record<ErrorCode, string>> = {
   COMPANY_CODE_TAKEN: 'Company code already taken',
   DUPLICATE_SHOP_CODE: 'Shop code already taken',
   DUPLICATE_BEAT_PLAN_CODE: 'Beat plan code already taken',
+  DUPLICATE_BRAND_LABEL: 'Brand label already taken',
+  DUPLICATE_REASON_LABEL: 'Reason label already taken',
+  SYSTEM_REASON_IMMUTABLE: 'The "Other" reason cannot be changed',
   OTP_INCORRECT: 'Incorrect OTP',
   OTP_EXPIRED: 'OTP expired',
   OTP_ATTEMPTS_EXHAUSTED: 'OTP attempts exhausted',

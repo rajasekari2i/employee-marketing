@@ -26,7 +26,14 @@ const prisma = new PrismaClient();
 /** The subset of the active transaction client this service needs. */
 type CompaniesTx = Pick<
   PrismaClient,
-  'company' | 'companySettings' | 'role' | 'user' | '$executeRaw'
+  | 'company'
+  | 'companySettings'
+  | 'role'
+  | 'user'
+  // 004-brands-reasons-crud: every company is created with exactly one
+  // system "Other" reason (see `create()` below).
+  | 'reasonMessage'
+  | '$executeRaw'
 >;
 
 export interface CreateCompanyResult {
@@ -139,6 +146,32 @@ export class CompaniesService {
     // this same request needs a `companyId IS NULL` row.
     await tx.$executeRaw`SELECT set_config('app.company_id', ${company.id}, true)`;
     this.cls.set('companyId', company.id);
+
+    // 004-brands-reasons-crud (research.md §3, FR-011): every company has
+    // exactly one system "Other" no-order reason. Created here, inside the
+    // same transaction as the company, its settings and its first admin, so
+    // a company can never exist without one. Safe at this point precisely
+    // because the pivot above has already switched BOTH isolation layers to
+    // this brand-new company — `app.company_id` for the RLS policy's WITH
+    // CHECK, and CLS's `companyId` for the Prisma extension — so this needs
+    // no RLS escape hatch of its own.
+    //
+    // Companies that predate this slice were given theirs by the backfill in
+    // 20261019093000_masters/migration.sql. A partial unique index in that
+    // same migration makes a second system row impossible either way.
+    //
+    // `displayOrder: 0` is never used for sorting — reason lists order by
+    // (isSystem ASC, displayOrder ASC), so this row is last by construction.
+    await tx.reasonMessage.create({
+      data: {
+        companyId: company.id,
+        label: 'Other',
+        displayOrder: 0,
+        isActive: true,
+        requiresText: true,
+        isSystem: true,
+      },
+    });
 
     const passwordHash = await password.hash(input.admin.temporaryPassword);
 

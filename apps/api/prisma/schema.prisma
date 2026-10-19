@@ -445,3 +445,75 @@ model BeatPlanShop {
   @@index([companyId, beatPlanId, sequence])
   @@map("beat_plan_shops")
 }
+
+// ---------------------------------------------------------------------------
+// Masters: brands & no-order reasons (004-brands-reasons-crud)
+// ---------------------------------------------------------------------------
+
+// Company-scoped master; becomes the subject of an order line in
+// 009-visits-and-orders. Deliberately missing the full architecture model's
+// `orderLines OrderLine[]` relation — OrderLine doesn't exist yet; added
+// additively by that slice, same posture 003-beat-plans-crud took with
+// DailyAssignment.
+//
+// `label` uniqueness is enforced twice: @@unique([companyId, label]) below
+// (exact), plus a hand-written functional unique index on
+// (company_id, lower(label)) in this slice's migration, which is the one
+// that actually satisfies FR-007's case-insensitive rule — Prisma's schema
+// language cannot express a functional index (data-model.md).
+model Brand {
+  id        String @id @default(uuid())
+  companyId String @map("company_id")
+
+  label String
+
+  // Server-derived from array position, never client-sent (research.md §1).
+  // 0-based, same convention as BeatPlanShop.sequence; the row number the
+  // design prints is the list position + 1, computed at render time.
+  displayOrder Int @map("display_order")
+
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([companyId, label])
+  @@index([companyId, isActive, displayOrder])
+  @@map("brands")
+}
+
+// Company-scoped master; becomes the single-select reason on a no-order
+// visit in 009-visits-and-orders. Deliberately missing that model's
+// `visits Visit[]` relation for the same reason as Brand.orderLines above.
+//
+// Every company has exactly one row with isSystem = true — its "Other"
+// reason — created with the company (companies.service.ts) and backfilled
+// for pre-existing companies by this slice's migration, which also adds a
+// partial unique index making a second system row impossible.
+model ReasonMessage {
+  id        String @id @default(uuid())
+  companyId String @map("company_id")
+
+  label String
+
+  displayOrder Int @map("display_order")
+
+  isActive Boolean @default(true) @map("is_active")
+
+  // true only for the system "Other" row. A column rather than a hard-coded
+  // label comparison so the field app keys off data, not a magic string
+  // (data-model.md). Server-set, never client-sent.
+  requiresText Boolean @default(false) @map("requires_text")
+
+  // true only for the system "Other" row. Drives every FR-011 guard, and is
+  // the first orderBy key so "Other" sorts last by construction rather than
+  // by holding a large displayOrder a later insert could overtake.
+  isSystem Boolean @default(false) @map("is_system")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([companyId, label])
+  @@index([companyId, isActive, displayOrder])
+  @@map("reason_messages")
+}

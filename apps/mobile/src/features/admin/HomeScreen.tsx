@@ -80,6 +80,11 @@ interface BeatPlansListResponse {
   nextCursor: string | null;
 }
 
+/** 004-brands-reasons-crud: `/brands` and `/reasons` share one shape and, unlike the three above, carry no `nextCursor` — both are deliberately unpaginated (contracts/masters.md). */
+interface MastersListResponse {
+  items: Array<{ id: string }>;
+}
+
 type HomeNavigationProp = NativeStackNavigationProp<
   AdminStackParamList,
   'Home'
@@ -177,6 +182,10 @@ export function HomeScreen() {
     total: number;
     unassigned: number;
   } | null>(null);
+  const [masterCounts, setMasterCounts] = useState<{
+    brands: number;
+    reasons: number;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -252,6 +261,27 @@ export function HomeScreen() {
         // Leave beatPlanCounts null — the tile falls back to a neutral subtitle.
       });
 
+    // Best-effort — the "Brands & reasons" tile's count, same posture as the
+    // three above. Simpler than its siblings: 004-brands-reasons-crud's two
+    // list endpoints are deliberately unpaginated (research.md §2), so these
+    // are complete counts with no `?limit=100` truncation caveat.
+    void Promise.all([
+      apiRequest<MastersListResponse>('/brands'),
+      apiRequest<MastersListResponse>('/reasons'),
+    ])
+      .then(([brandsResult, reasonsResult]) => {
+        if (cancelled) {
+          return;
+        }
+        setMasterCounts({
+          brands: brandsResult.items.length,
+          reasons: reasonsResult.items.length,
+        });
+      })
+      .catch(() => {
+        // Leave masterCounts null — the tile falls back to a neutral subtitle.
+      });
+
     return () => {
       cancelled = true;
     };
@@ -304,6 +334,10 @@ export function HomeScreen() {
 
   const beatPlansSubtitle = beatPlanCounts
     ? `${beatPlanCounts.total} plans · ${beatPlanCounts.unassigned} unassigned`
+    : 'View all';
+
+  const mastersSubtitle = masterCounts
+    ? `${masterCounts.brands} brands · ${masterCounts.reasons} reasons`
     : 'View all';
 
   return (
@@ -435,8 +469,8 @@ export function HomeScreen() {
           />
           <Tile
             icon={ICON_MASTERS}
-            onPress={() => comingSoon('Brands & reasons')}
-            subtitle="Coming soon"
+            onPress={() => navigation.navigate('BrandsReasonsList')}
+            subtitle={mastersSubtitle}
             title="Brands & reasons"
           />
           <Tile

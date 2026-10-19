@@ -92,3 +92,18 @@ export type {
   UpdateBeatPlanInput,
   ListBeatPlansQuery,
 } from './beat-plans.schema';
+
+export {
+  createBrandSchema,
+  createReasonSchema,
+  updateBrandSchema,
+  updateReasonSchema,
+  reorderSchema,
+} from './masters.schema';
+export type {
+  CreateBrandInput,
+  CreateReasonInput,
+  UpdateBrandInput,
+  UpdateReasonInput,
+  ReorderInput,
+} from './masters.schema';
