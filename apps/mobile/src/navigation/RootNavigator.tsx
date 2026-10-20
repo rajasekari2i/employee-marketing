@@ -279,7 +279,9 @@ function AdminNavigator() {
       <AdminStack.Screen
         name="ChangePassword"
         component={ChangePasswordScreen}
-        options={{ title: 'Change password' }}
+        // Board 1.10 draws its own back chip and 24/700 title, so the
+        // native header would be a second one above it.
+        options={{ headerShown: false }}
       />
       <AdminStack.Screen
         name="UsersList"

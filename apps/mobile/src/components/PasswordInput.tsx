@@ -32,7 +32,10 @@ export function PasswordInput({
           borderColor: '#CBD2DD',
           borderRadius: 12,
           paddingHorizontal: 14,
-          paddingRight: 52,
+          // Board 1.10's `.inp` reserves exactly this much for the eye
+          // (`padding: 0 48px 0 14px`); board 1.1 states no right padding
+          // at all, so 48 is the only value either board gives.
+          paddingRight: 48,
           fontSize: 16,
           fontWeight: '500',
           color: '#141A26',
