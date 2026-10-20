@@ -23,6 +23,9 @@ import {
 } from '../../components/icons/OutlineIcon';
 import { getCurrentPosition, locationFailureMessage } from '../../lib/location';
 import {
+  discard as discardHeld,
+  discardRejected,
+  logoutBlockedMessage,
   startOutboxSync,
   subscribeOutbox,
   sync as syncOutbox,
@@ -171,6 +174,8 @@ export function TodaysBeatScreen() {
   // saved but not yet sent (FR-039).
   const [held, setHeld] = useState<HeldSubmission[]>([]);
   useEffect(() => subscribeOutbox(setHeld), []);
+  /** Refused by the server, so no amount of reconnecting will send them. */
+  const rejected = held.filter((item) => item.permanentlyRejected);
   useEffect(() => startOutboxSync(), []);
 
   const [data, setData] = useState<TodayResponse | null>(null);
@@ -279,10 +284,16 @@ export function TodaysBeatScreen() {
   async function handleLogout(): Promise<void> {
     // FR-041: logging out would strand submissions the executive believes
     // are saved, so the session is KEPT and they are told why.
-    if (held.length > 0) {
-      setError(
-        `${held.length} submission${held.length === 1 ? '' : 's'} still waiting to sync. Reconnect so they can be sent before logging out.`,
-      );
+    //
+    // Only SENDABLE items hold the session. An item the server has already
+    // refused outright (`permanentlyRejected`) will never be sent however
+    // long the executive waits, so counting it here produced a dead end:
+    // the message asks them to reconnect, reconnecting cannot help, and
+    // there was no way out of the app. Those are surfaced by the strip
+    // above, which now carries its own Dismiss.
+    const waiting = held.filter((item) => !item.permanentlyRejected);
+    if (waiting.length > 0) {
+      setError(logoutBlockedMessage(waiting.length));
       return;
     }
 
@@ -298,6 +309,9 @@ export function TodaysBeatScreen() {
       // Clear regardless — never strand the user looking logged in because
       // of a network error.
     } finally {
+      // Nothing sendable is left — only items the server refused, which do
+      // not belong to whoever signs in next on this phone.
+      await discardRejected();
       await clearSession();
     }
   }
@@ -481,10 +495,38 @@ export function TodaysBeatScreen() {
               }}
             >
               <Text style={{ fontSize: 13, color: RUNNING_INK, flexShrink: 1 }}>
-                {held.filter((item) => item.permanentlyRejected).length > 0
-                  ? `${held.filter((i) => i.permanentlyRejected).length} submission${held.filter((i) => i.permanentlyRejected).length === 1 ? '' : 's'} could not be saved — ${held.find((i) => i.permanentlyRejected)?.lastError ?? ''}`
+                {rejected.length > 0
+                  ? `${rejected.length} submission${rejected.length === 1 ? '' : 's'} could not be saved — ${rejected[0]?.lastError ?? ''}`
                   : waitingLabel(held)}
               </Text>
+              {rejected.length > 0 ? (
+                /*
+                  FR-040 surfaces a refused submission; this is the way out
+                  of it. Only ever offered for items the SERVER refused —
+                  nothing is pending for them, so discarding loses no work
+                  that could still have been sent. Items still waiting for
+                  a connection have no Dismiss, and must not.
+                */
+                <Pressable
+                  accessibilityLabel="Dismiss the submissions that could not be saved"
+                  onPress={() => {
+                    void Promise.all(
+                      rejected.map((item) => discardHeld(item.id)),
+                    );
+                  }}
+                  style={{ paddingVertical: 4, paddingHorizontal: 8 }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontWeight: '700',
+                      color: RUNNING_INK,
+                    }}
+                  >
+                    Dismiss
+                  </Text>
+                </Pressable>
+              ) : null}
             </View>
           ) : null}
 

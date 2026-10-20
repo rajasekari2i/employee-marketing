@@ -115,6 +115,42 @@ export async function count(): Promise<number> {
 }
 
 /**
+ * The items that must hold a logout (FR-041): saved on this device and
+ * still sendable.
+ *
+ * **Deliberately excludes `permanentlyRejected` items.** Those were refused
+ * by the server outright — the stop was already completed, the beat had
+ * ended — so no amount of waiting or reconnecting will send them. Counting
+ * them produced a dead end: the executive was told to reconnect before
+ * logging out, reconnecting changed nothing, and there was no way out. They
+ * are surfaced by the Today screen's strip, which carries its own Dismiss.
+ */
+export async function sendable(): Promise<HeldSubmission[]> {
+  return (await list()).filter((item) => !item.permanentlyRejected);
+}
+
+/**
+ * Drops every item the server refused outright. Called when a logout goes
+ * ahead, so one person's refused submissions are not left on a shared phone
+ * for whoever signs in next. Sendable items are never touched — a logout
+ * cannot proceed while any exist.
+ */
+export function discardRejected(): Promise<void> {
+  return serialise(async () => {
+    const items = await readRaw();
+    const keep = items.filter((item) => !item.permanentlyRejected);
+    if (keep.length !== items.length) {
+      await writeRaw(keep);
+    }
+  });
+}
+
+/** One wording for both logout buttons, so they cannot drift apart. */
+export function logoutBlockedMessage(waiting: number): string {
+  return `${waiting} submission${waiting === 1 ? '' : 's'} still waiting to sync. Reconnect so they can be sent before logging out.`;
+}
+
+/**
  * Holds a submission and returns it. The caller then attempts an immediate
  * send; whether that succeeds or not, the submission is already safe.
  */

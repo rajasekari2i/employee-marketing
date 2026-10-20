@@ -26,6 +26,11 @@ import {
   OutlineIcon,
   type IconShape,
 } from '../../components/icons/OutlineIcon';
+import {
+  discardRejected,
+  logoutBlockedMessage,
+  sendable,
+} from '../../lib/outbox';
 import { clearSession, getSession } from '../../lib/secureSession';
 import type {
   AdminStackParamList,
@@ -178,6 +183,8 @@ export function ProfileScreen() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
+  /** Why a logout was refused — submissions still waiting to sync (FR-041). */
+  const [logoutBlocked, setLogoutBlocked] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -260,6 +267,18 @@ export function ProfileScreen() {
   }
 
   async function handleLogout(): Promise<void> {
+    // FR-041, the same guard the Today screen applies. This button is
+    // reachable from the account menu on EVERY role's screens, so without
+    // it an executive could log out from here and strand submissions they
+    // were told were saved. For an admin or a manager the queue is always
+    // empty and this costs one read.
+    const waiting = await sendable();
+    if (waiting.length > 0) {
+      setLogoutBlocked(logoutBlockedMessage(waiting.length));
+      return;
+    }
+
+    setLogoutBlocked(null);
     setLoggingOut(true);
     try {
       const session = await getSession();
@@ -273,6 +292,8 @@ export function ProfileScreen() {
       // Clear the session regardless — never strand the user looking
       // logged-in because of a network error.
     } finally {
+      // Only refused items can remain; they are not the next signer-in's.
+      await discardRejected();
       await clearSession();
       setLoggingOut(false);
       // No explicit navigation call: clearing the session store notifies
@@ -592,6 +613,14 @@ export function ProfileScreen() {
               {loggingOut ? 'Logging out…' : 'Log out'}
             </Text>
           </Pressable>
+          {logoutBlocked ? (
+            <Text
+              style={{ fontSize: 13, color: DANGER }}
+              testID="profile-logout-blocked"
+            >
+              {logoutBlocked}
+            </Text>
+          ) : null}
         </View>
       </ScrollView>
 
