@@ -111,14 +111,58 @@ export class ExtraStopService {
     assignmentId: string,
     input: AddExtraStopInput,
   ): Promise<AddExtraStopResult> {
-    const tx = await this.scopeToCaller(companyId);
+    return this.add(companyId, assignmentId, {
+      actorId: executiveId,
+      source: 'EXEC_EXTRA',
+      addReason: null,
+      // The executive may only ever act on their OWN day.
+      scopeToExecutiveId: executiveId,
+      shopId: input.shopId,
+      newShop: input.newShop,
+      fromOfflineQueue: input.fromOfflineQueue,
+    });
+  }
 
-    // (3) The caller's OWN day. An id that is unknown, another company's or
-    // another executive's is a 404 alike — never a 403, which would confirm
-    // the row exists.
+  /**
+   * The one transaction both entry points share.
+   *
+   * `scopeToExecutiveId` is the only behavioural difference between them:
+   * non-null narrows the lookup to that executive's own day (the executive's
+   * route), null leaves it company-scoped (the manager's). Everything after
+   * the lookup — the RUNNING check, the frozen radius and coordinates, the
+   * appended sequence, the duplicate guard and the audit write — is
+   * identical, which is the point.
+   */
+  private async add(
+    companyId: string,
+    assignmentId: string,
+    options: {
+      actorId: string;
+      source: 'EXEC_EXTRA' | 'MANAGER_EXTRA';
+      addReason: string | null;
+      scopeToExecutiveId: string | null;
+      shopId?: string;
+      newShop?: AddExtraStopInput['newShop'];
+      fromOfflineQueue?: boolean;
+    },
+  ): Promise<AddExtraStopResult> {
+    const tx = await this.scopeToCaller(companyId);
+    const input = {
+      shopId: options.shopId,
+      newShop: options.newShop,
+    } as AddExtraStopInput;
+
+    // (3) An id that is unknown, another company's — or, for the executive's
+    // own route, another executive's — is a 404 alike, never a 403, which
+    // would confirm the row exists.
     const assignment = await tx.dailyAssignment.findFirst({
-      where: { id: assignmentId, executiveId },
-      select: { id: true, status: true },
+      where: {
+        id: assignmentId,
+        ...(options.scopeToExecutiveId
+          ? { executiveId: options.scopeToExecutiveId }
+          : {}),
+      },
+      select: { id: true, status: true, executiveId: true },
     });
     if (!assignment) {
       throw new AppError('NOT_FOUND', 'Beat day not found.');
@@ -153,7 +197,7 @@ export class ExtraStopService {
       ? await this.createFieldShop(
           tx,
           companyId,
-          executiveId,
+          options.actorId,
           input.newShop,
           settings?.autoApproveExecPins ?? false,
         )
@@ -188,11 +232,15 @@ export class ExtraStopService {
           assignmentId: assignment.id,
           shopId: shop.id,
           sequence,
-          source: 'EXEC_EXTRA',
+          source: options.source,
           status: 'PENDING',
           // Who and when — the server's clock, never the device's claim.
-          addedByUserId: executiveId,
+          // For the manager's route this is the MANAGER, which is what
+          // `addedByUserId` has always meant.
+          addedByUserId: options.actorId,
           addedAt: new Date(),
+          // Null for an executive's own extra; required for a manager's.
+          addReason: options.addReason,
           effectiveRadiusMeters,
           shopLatitude: approved ? shop.latitude : null,
           shopLongitude: approved ? shop.longitude : null,
@@ -234,6 +282,47 @@ export class ExtraStopService {
       pinStatus: shop.locationStatus,
       totalStopsToday,
     };
+  }
+
+  /**
+   * `POST /assignments/:id/stops/manager` — a MANAGER adding a shop to a
+   * named executive's day (010-manager-app, board 3.2).
+   *
+   * **A second entry point, not a second implementation.** Slice 007's
+   * research recorded that building the executive's route at the sibling
+   * path "leaves the manager's as a sibling rather than a refactor"; this is
+   * that sibling, and it reuses the whole transaction below.
+   *
+   * **Exactly three differences, and nothing else**:
+   *
+   *  1. `source: 'MANAGER_EXTRA'` — an enum value slice 005 declared with no
+   *     writer. This is its first.
+   *  2. `reason` is REQUIRED, and written to `AssignmentStop.addReason` —
+   *     the column slice 007 deliberately omitted, naming this slice.
+   *  3. **The assignment is not the caller's own.** Every other route in
+   *     this service, and in `visits`, `my-visits` and `executive-totals`,
+   *     narrows to `executiveId = caller`. This one must not: a manager
+   *     chooses the person. **This is the first route in the repo where the
+   *     absence of that narrowing is correct rather than a bug** (FR-050) —
+   *     do not "fix" it.
+   *
+   * `addedByUserId` already means "who added this stop" and takes the
+   * manager's id unchanged.
+   */
+  async addManagerExtraStop(
+    companyId: string,
+    managerId: string,
+    assignmentId: string,
+    input: { shopId: string; reason: string },
+  ): Promise<AddExtraStopResult> {
+    return this.add(companyId, assignmentId, {
+      actorId: managerId,
+      source: 'MANAGER_EXTRA',
+      addReason: input.reason,
+      // Company-scoped only — see the note above.
+      scopeToExecutiveId: null,
+      shopId: input.shopId,
+    });
   }
 
   /**

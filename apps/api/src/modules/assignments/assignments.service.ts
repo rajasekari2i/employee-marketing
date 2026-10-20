@@ -213,6 +213,75 @@ export class AssignmentsService {
     return this.ensureTodayRoute(tx, companyId, executiveId, businessDate);
   }
 
+  /**
+   * `GET /assignments?date=&executiveId=` — the MANAGER's view
+   * (010-manager-app). Path from `03-ARCHITECTURE.md:821`.
+   *
+   * Board 3.2 needs it because the manager chooses a PERSON while
+   * `POST /assignments/:id/stops/manager` is addressed by that person's
+   * DAY. It also supplies the board's "5 of 12 done" progress line.
+   *
+   * **Company-scoped with no executive narrowing** — the manager reads
+   * every executive's day (FR-050). That differs from every other method on
+   * this service, all of which narrow to the caller's own id, so it is
+   * stated rather than left to be noticed.
+   *
+   * Unlike `getToday`, this NEVER creates a row: a manager reading a day
+   * must not bring one into being for someone else.
+   */
+  async listForManager(
+    companyId: string,
+    query: { date?: string; executiveId?: string },
+  ): Promise<
+    Array<{
+      assignmentId: string;
+      executiveId: string;
+      executiveName: string;
+      beatPlanName: string | null;
+      businessDate: string;
+      state: BeatState;
+      visited: number;
+      total: number;
+      /**
+       * The shops ALREADY on that day — planned stops and extras alike.
+       * Board 3.2 excludes them from its picker so the manager is not
+       * offered a shop the add would refuse with `SHOP_ALREADY_IN_BEAT`.
+       */
+      shopIds: string[];
+    }>
+  > {
+    const tx = await this.scopeToCaller(companyId);
+    const businessDate =
+      query.date ?? (await this.resolveBusinessDate(tx, companyId));
+
+    const rows = await tx.dailyAssignment.findMany({
+      where: {
+        businessDate: this.clock.toDateColumn(businessDate),
+        ...(query.executiveId ? { executiveId: query.executiveId } : {}),
+      },
+      select: {
+        id: true,
+        executiveId: true,
+        beatPlanName: true,
+        status: true,
+        executive: { select: { name: true } },
+        stops: { select: { status: true, shopId: true } },
+      },
+    });
+
+    return rows.map((row) => ({
+      assignmentId: row.id,
+      executiveId: row.executiveId,
+      executiveName: row.executive.name,
+      beatPlanName: row.beatPlanName,
+      businessDate,
+      state: row.status ?? 'NOT_STARTED',
+      visited: row.stops.filter((s) => s.status === 'COMPLETED').length,
+      total: row.stops.length,
+      shopIds: row.stops.map((s) => s.shopId),
+    }));
+  }
+
   /** The company-local calendar date — never a client-supplied or device date (FR-005). */
   private async resolveBusinessDate(
     tx: AssignmentsTx,

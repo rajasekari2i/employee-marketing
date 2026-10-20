@@ -75,6 +75,12 @@ export const TENANT_MODELS = new Set<string>([
   'Visit',
   'Order',
   'OrderLine',
+  // 010-manager-app: the one new tenant table in that slice, closed on both
+  // isolation layers in the same migration pair that creates it
+  // (20261020120018_rls_attendance). Note that attendance deliberately has
+  // NO second, per-user scope — a manager records it for every member of
+  // staff in the company (FR-050) — so company scope is the whole of it.
+  'Attendance',
 ]);
 
 /** Operations whose `where` clause must be narrowed to the tenant. */

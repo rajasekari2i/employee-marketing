@@ -41,3 +41,31 @@ export const executiveTotalsQuerySchema = z
   .strict();
 
 export type ExecutiveTotalsQuery = z.infer<typeof executiveTotalsQuerySchema>;
+
+/**
+ * `GET /reports/previous-day` query — board 3.1 (010-manager-app).
+ *
+ * **`date` is accepted here, unlike `executiveTotalsQuerySchema` above**, and
+ * the difference is deliberate rather than inconsistent. Board 1.6 offers
+ * three fixed PERIODS, so letting a device work out "what is Monday of this
+ * week in my company's timezone?" would have been a second conversion point
+ * — which Constitution rule 8 puts in exactly one place.
+ *
+ * A single explicit calendar date is not a period calculation. The server
+ * still resolves "the previous business day" when none is given, and still
+ * interprets whatever is given in the company's timezone, so `CompanyClock`
+ * remains the only thing that knows what a day is. And a manager genuinely
+ * needs to look back at an arbitrary day, which board 3.1's date control is.
+ */
+export const previousDayQuerySchema = z
+  .object({
+    date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD')
+      .optional(),
+    executiveId: z.string().min(1).optional(),
+    beatPlanId: z.string().min(1).optional(),
+  })
+  .strict();
+
+export type PreviousDayQuery = z.infer<typeof previousDayQuerySchema>;

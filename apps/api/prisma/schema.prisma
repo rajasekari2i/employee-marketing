@@ -113,6 +113,31 @@ enum ReviewStatus {
   PENDING_REVIEW
 }
 
+// 010-manager-app: taken verbatim from 03-ARCHITECTURE.md:269-271.
+enum AttendanceSession {
+  MORNING
+  EVENING
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LEAVE
+  HOLIDAY
+  WEEKLY_OFF
+}
+
+// Derived by the server from the company's session start times and delay
+// thresholds — NEVER accepted from a client (FR-035). It looks like an
+// observation a device could make; it is the company's settings applied to
+// an arrival time, exactly as `Visit.isExceedRange` is the company's radius
+// applied to a position.
+enum LatenessFlag {
+  ON_TIME
+  DELAY_1H
+  DELAY_2H
+}
+
 enum DeliveryStatus {
   TO_DELIVER
   DELIVERED
@@ -238,6 +263,8 @@ model User {
   assignments       DailyAssignment[]
   // 006-visit-outcomes: the reverse side of Visit.executiveId.
   visits            Visit[]
+  // 010-manager-app: the reverse side of Attendance.userId.
+  attendance        Attendance[]
 
   @@unique([companyId, username])
   @@index([companyId, status])
@@ -699,6 +726,18 @@ model AssignmentStop {
   addedByUserId String?   @map("added_by_user_id")
   addedAt       DateTime? @map("added_at")
 
+  // 010-manager-app: the reason a MANAGER gave for adding this stop
+  // (FR-043). Slice 007's data model recorded this column as deliberately
+  // omitted — "it is for manager-added extras, which are out of scope, so it
+  // stays omitted" — so it arrives now WITH its writer, which is the
+  // discipline this schema has followed throughout.
+  //
+  // Nullable because a planned stop and an executive's own extra have no
+  // reason. Required in the service for MANAGER_EXTRA, which is where the
+  // rule belongs: the column describes three kinds of stop and only one
+  // needs it.
+  addReason String? @map("add_reason")
+
   effectiveRadiusMeters Int @map("effective_radius_meters")
 
   // 006-visit-outcomes (research.md §4): the shop's approved coordinate,
@@ -844,8 +883,11 @@ model Order {
   totalQuantity Int @map("total_quantity")
   brandCount    Int @map("brand_count")
 
-  // Written here; moved to DELIVERED by the manager slice.
+  // Written here; moved to DELIVERED by the manager slice — which is
+  // 010-manager-app, and these two columns are its attribution (FR-023).
   deliveryStatus DeliveryStatus @default(TO_DELIVER) @map("delivery_status")
+  deliveredAt    DateTime?      @map("delivered_at")
+  deliveredBy    String?        @map("delivered_by")
 
   lines OrderLine[]
 
@@ -876,4 +918,51 @@ model OrderLine {
   @@unique([orderId, brandId])
   @@index([companyId, brandId])
   @@map("order_lines")
+}
+
+// 010-manager-app (data-model.md). Taken from 03-ARCHITECTURE.md:669.
+//
+// APPEND-ONLY BY CONSTRUCTION. An amendment INSERTS a row at version + 1 and
+// flips the previous row's isActive — it never UPDATEs a status, a time or a
+// flag (Constitution rule 4, FR-037). Including `version` in the unique key
+// is what makes that a database fact rather than a convention: a second
+// writer cannot reuse a version, so two managers amending the same session
+// at once produce one winner and one P2002, never a lost update.
+model Attendance {
+  id        String @id @default(uuid())
+  companyId String @map("company_id")
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  // The company-LOCAL calendar date, from CompanyClock — never a device
+  // date. @db.Date so it carries no time component.
+  businessDate DateTime          @map("business_date") @db.Date
+  session      AttendanceSession
+  status       AttendanceStatus
+
+  // Required when PRESENT, null otherwise — enforced in the schema contract
+  // and again in the service.
+  actualTime DateTime? @map("actual_time")
+
+  // Both SERVER-DERIVED, both absent from the request schema. See
+  // LatenessFlag above, and CompanySettings.payableUnitByStatus.
+  latenessFlag LatenessFlag? @map("lateness_flag")
+  payableUnits Decimal       @map("payable_units") @db.Decimal(4, 2)
+
+  version        Int     @default(1)
+  isActive       Boolean @default(true) @map("is_active")
+  supersededById String? @map("superseded_by_id")
+  // Required on an amendment, null on a first record (FR-037).
+  changeReason   String? @map("change_reason")
+
+  recordedBy String   @map("recorded_by")
+  recordedAt DateTime @default(now()) @map("recorded_at")
+
+  // LOAD-BEARING: `version` in the key is what makes the history
+  // append-only. See the note above the model.
+  @@unique([companyId, userId, businessDate, session, version])
+  @@index([companyId, businessDate, session, isActive])
+  @@index([companyId, userId, businessDate])
+  @@map("attendance")
 }

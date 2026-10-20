@@ -2,7 +2,9 @@ import { Module } from '@nestjs/common';
 
 import { AssignmentsModule } from '../assignments/assignments.module';
 
+import { ManagerVisitsService } from './manager-visits.service';
 import { MyVisitsService } from './my-visits.service';
+import { OrderDeliveryService } from './order-delivery.service';
 import { NearbyShopsService } from './nearby-shops.service';
 import { ShopPinService } from './shop-pin.service';
 import { VisitsController } from './visits.controller';
@@ -33,6 +35,8 @@ import { VisitsService } from './visits.service';
     ShopPinService,
     NearbyShopsService,
     MyVisitsService,
+    ManagerVisitsService,
+    OrderDeliveryService,
   ],
 })
 export class VisitsModule {}

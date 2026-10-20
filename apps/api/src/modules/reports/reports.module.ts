@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { AssignmentsModule } from '../assignments/assignments.module';
 
 import { ExecutiveTotalsService } from './executive-totals.service';
+import { PreviousDayService } from './previous-day.service';
 import { ReportsController } from './reports.controller';
 
 /**
@@ -22,6 +23,6 @@ import { ReportsController } from './reports.controller';
 @Module({
   imports: [AssignmentsModule],
   controllers: [ReportsController],
-  providers: [ExecutiveTotalsService],
+  providers: [ExecutiveTotalsService, PreviousDayService],
 })
 export class ReportsModule {}

@@ -129,3 +129,28 @@ export type { MyVisitsQuery } from './my-visits.schema';
 
 export { executiveTotalsQuerySchema } from './reports.schema';
 export type { ExecutiveTotalsQuery } from './reports.schema';
+
+export {
+  managerVisitsQuerySchema,
+  markDeliveredSchema,
+  managerAddStopSchema,
+  managerAssignmentsQuerySchema,
+} from './manager-visits.schema';
+export type {
+  ManagerVisitsQuery,
+  MarkDeliveredInput,
+  ManagerAddStopInput,
+  ManagerAssignmentsQuery,
+} from './manager-visits.schema';
+
+export {
+  attendanceDayQuerySchema,
+  recordAttendanceSchema,
+} from './attendance.schema';
+export type {
+  AttendanceDayQuery,
+  RecordAttendanceInput,
+} from './attendance.schema';
+
+export { previousDayQuerySchema } from './reports.schema';
+export type { PreviousDayQuery } from './reports.schema';

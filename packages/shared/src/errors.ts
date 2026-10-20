@@ -66,6 +66,18 @@ export const ERROR_CODES = [
   // an already-added shop; this is the server refusing it anyway, because
   // FR-011 requires the refusal to survive a direct request and a race.
   'SHOP_ALREADY_IN_BEAT',
+  // 010-manager-app, contracts/manager-app.md. The three states the
+  // manager's two commands can refuse. ORDER_ALREADY_DELIVERED is a REFUSAL
+  // rather than a silent success on purpose: reporting success would tell
+  // this manager they marked something another manager actually marked, and
+  // would overwrite the attribution the delivery record exists to keep.
+  // ATTENDANCE_VERSION_CONFLICT is the user-facing half of the
+  // @@unique([companyId, userId, businessDate, session, version]) constraint
+  // that makes attendance history append-only — two managers amending at
+  // once produce one winner and one of these, never a lost update.
+  'ORDER_ALREADY_DELIVERED',
+  'ATTENDANCE_DATE_IN_FUTURE',
+  'ATTENDANCE_VERSION_CONFLICT',
   'IDEMPOTENCY_KEY_REUSED',
   'OTP_INCORRECT',
   'OTP_EXPIRED',
@@ -109,6 +121,9 @@ export const ERROR_STATUS: Readonly<Record<ErrorCode, number>> = {
   PIN_ACCURACY_TOO_LOW: 409,
   PIN_ALREADY_SET: 409,
   SHOP_ALREADY_IN_BEAT: 409,
+  ORDER_ALREADY_DELIVERED: 409,
+  ATTENDANCE_DATE_IN_FUTURE: 409,
+  ATTENDANCE_VERSION_CONFLICT: 409,
   OTP_INCORRECT: 400,
   OTP_EXPIRED: 410,
   OTP_ATTEMPTS_EXHAUSTED: 429,
@@ -142,6 +157,9 @@ export const ERROR_TITLES: Readonly<Record<ErrorCode, string>> = {
   PIN_ACCURACY_TOO_LOW: 'Location accuracy too low',
   PIN_ALREADY_SET: 'Shop location already set',
   SHOP_ALREADY_IN_BEAT: "Shop already in today's beat",
+  ORDER_ALREADY_DELIVERED: 'Order already delivered',
+  ATTENDANCE_DATE_IN_FUTURE: 'Cannot record attendance for a future date',
+  ATTENDANCE_VERSION_CONFLICT: 'This attendance record changed',
   OTP_INCORRECT: 'Incorrect OTP',
   OTP_EXPIRED: 'OTP expired',
   OTP_ATTEMPTS_EXHAUSTED: 'OTP attempts exhausted',

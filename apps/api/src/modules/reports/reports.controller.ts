@@ -1,16 +1,22 @@
 import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { createZodDto } from 'nestjs-zod';
-import { AppError, executiveTotalsQuerySchema } from '@field-sales/shared';
+import {
+  AppError,
+  executiveTotalsQuerySchema,
+  previousDayQuerySchema,
+} from '@field-sales/shared';
 
 import { Roles } from '../../common/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { ExecutiveTotalsService } from './executive-totals.service';
+import { PreviousDayService } from './previous-day.service';
 
 class ExecutiveTotalsQueryDto extends createZodDto(
   executiveTotalsQuerySchema,
 ) {}
+class PreviousDayQueryDto extends createZodDto(previousDayQuerySchema) {}
 
 /**
  * 009-my-totals / contracts/executive-totals.md. Board 1.6.
@@ -34,11 +40,33 @@ class ExecutiveTotalsQueryDto extends createZodDto(
 @ApiTags('reports')
 @Controller('reports')
 @UseGuards(RolesGuard)
-@Roles('MARKETING_EXECUTIVE')
 export class ReportsController {
   constructor(
     private readonly executiveTotalsService: ExecutiveTotalsService,
+    private readonly previousDayService: PreviousDayService,
   ) {}
+
+  /**
+   * `GET /reports/previous-day` — board 3.1 (010-manager-app). Path taken
+   * verbatim from `03-ARCHITECTURE.md:836`.
+   *
+   * **The role is per-method, not on the class**, because this controller
+   * now serves two: a class-level `@Roles('MARKETING_EXECUTIVE','MANAGER')`
+   * would make an executive's token acceptable on this route and a
+   * manager's on `/executive-totals`.
+   *
+   * `date` IS accepted here, unlike the totals route — see
+   * `reports.schema.ts` for why a single calendar date is not the period
+   * calculation rule 8 keeps in one place.
+   */
+  @Roles('MANAGER')
+  @Get('previous-day')
+  async previousDay(
+    @Req() request: AuthenticatedRequest,
+    @Query() query: PreviousDayQueryDto,
+  ) {
+    return this.previousDayService.get(this.requireCompanyId(request), query);
+  }
 
   /**
    * A read: no `Idempotency-Key` and no `@Audited`. The CSV export route in
@@ -47,6 +75,7 @@ export class ReportsController {
    * The query carries a period NAME and nothing else — no `executiveId` and
    * no `from`/`to`. See `reports.schema.ts` for why both absences matter.
    */
+  @Roles('MARKETING_EXECUTIVE')
   @Get('executive-totals')
   async executiveTotals(
     @Req() request: AuthenticatedRequest,

@@ -9,6 +9,14 @@ import { BeatPlansListScreen } from '../features/admin/BeatPlansListScreen';
 import { BrandsReasonsListScreen } from '../features/admin/BrandsReasonsListScreen';
 import { AddExtraShopScreen } from '../features/executive/AddExtraShopScreen';
 import { MyTotalsScreen } from '../features/executive/MyTotalsScreen';
+import { AddShopToTodayScreen } from '../features/manager/AddShopToTodayScreen';
+import { AttendanceDayScreen } from '../features/manager/AttendanceDayScreen';
+import { AttendanceSessionScreen } from '../features/manager/AttendanceSessionScreen';
+import { ManagerVisitsScreen } from '../features/manager/ManagerVisitsScreen';
+import { NoOrderVisitScreen } from '../features/manager/NoOrderVisitScreen';
+import { OrderVisitScreen } from '../features/manager/OrderVisitScreen';
+import { OutOfRangeVisitScreen } from '../features/manager/OutOfRangeVisitScreen';
+import { PreviousDayReportScreen } from '../features/manager/PreviousDayReportScreen';
 import { MyVisitsScreen } from '../features/executive/MyVisitsScreen';
 import { CaptureShopPinScreen } from '../features/executive/CaptureShopPinScreen';
 import { CreateShopFromFieldScreen } from '../features/executive/CreateShopFromFieldScreen';
@@ -175,6 +183,40 @@ export type ExecutiveStackParamList = {
   };
 };
 
+/**
+ * 010-manager-app, PRD §4 screens 3.1–3.8. The Manager's whole app.
+ *
+ * Until this slice a manager signed in and landed on the coming-soon
+ * screen — `stackForRole` below sent them there with a comment from slice
+ * 001 saying their stack was out of that story's scope. This is that scope.
+ */
+export type ManagerStackParamList = {
+  /** Board 3.1 — the landing screen. */
+  PreviousDayReport: undefined;
+  /** Board 3.3. Params preset the tab when arriving from a report tile. */
+  ManagerVisits: { outcome?: 'ORDER' | 'NO_ORDER'; outOfRange?: boolean };
+  /** Board 3.4 — reached from the Order tab, and the only place a delivery is marked. */
+  OrderVisit: { visitId: string };
+  /** Board 3.5 — reached from the No order tab. */
+  NoOrderVisit: { visitId: string };
+  /** Board 3.6 — reached from the Out of range tab, read-only, whatever the outcome. */
+  OutOfRangeVisit: { visitId: string };
+  /** Board 3.2. */
+  AddShopToToday: undefined;
+  /** Board 3.7. */
+  AttendanceDay: undefined;
+  /** Board 3.8. */
+  AttendanceSession: {
+    userId: string;
+    name: string;
+    businessDate: string;
+    session: 'MORNING' | 'EVENING';
+  };
+  /** The same ProfileScreen every role uses, reached from the account menu. */
+  Profile: undefined;
+  ChangePassword: undefined;
+};
+
 export type ComingSoonStackParamList = {
   ComingSoon: undefined;
 };
@@ -182,9 +224,14 @@ export type ComingSoonStackParamList = {
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AdminStack = createNativeStackNavigator<AdminStackParamList>();
 const ExecutiveStack = createNativeStackNavigator<ExecutiveStackParamList>();
+const ManagerStack = createNativeStackNavigator<ManagerStackParamList>();
 const ComingSoonStack = createNativeStackNavigator<ComingSoonStackParamList>();
 
-/** DoD item 5: `MANAGER`/`MARKETING_EXECUTIVE` (and any other non-Admin role) land here — their own stacks are out of this story's scope. */
+/**
+ * Where a role with no screens lands. As of 010-manager-app that is only
+ * `SYSTEM_ADMIN` (API-only by design) and `EMPLOYEE` (who never signs in) —
+ * Admin, Executive and Manager all have their own stacks now.
+ */
 function ComingSoonScreen() {
   return (
     <View className="flex-1 items-center justify-center bg-white px-6">
@@ -273,6 +320,63 @@ function AdminNavigator() {
   );
 }
 
+function ManagerNavigator() {
+  return (
+    <ManagerStack.Navigator>
+      <ManagerStack.Screen
+        name="PreviousDayReport"
+        component={PreviousDayReportScreen}
+        options={{ headerShown: false }}
+      />
+      <ManagerStack.Screen
+        name="ManagerVisits"
+        component={ManagerVisitsScreen}
+        options={{ headerShown: false }}
+      />
+      <ManagerStack.Screen
+        name="OrderVisit"
+        component={OrderVisitScreen}
+        options={{ headerShown: false }}
+      />
+      <ManagerStack.Screen
+        name="NoOrderVisit"
+        component={NoOrderVisitScreen}
+        options={{ headerShown: false }}
+      />
+      <ManagerStack.Screen
+        name="OutOfRangeVisit"
+        component={OutOfRangeVisitScreen}
+        options={{ headerShown: false }}
+      />
+      <ManagerStack.Screen
+        name="AddShopToToday"
+        component={AddShopToTodayScreen}
+        options={{ headerShown: false }}
+      />
+      <ManagerStack.Screen
+        name="AttendanceDay"
+        component={AttendanceDayScreen}
+        options={{ headerShown: false }}
+      />
+      <ManagerStack.Screen
+        name="AttendanceSession"
+        component={AttendanceSessionScreen}
+        options={{ headerShown: false }}
+      />
+      <ManagerStack.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{ headerShown: false }}
+      />
+      <ManagerStack.Screen
+        name="ChangePassword"
+        component={ChangePasswordScreen}
+        options={{ headerShown: false }}
+      />
+    </ManagerStack.Navigator>
+  );
+}
+
 function ComingSoonNavigator() {
   return (
     <ComingSoonStack.Navigator>
@@ -352,10 +456,14 @@ function stackForRole(role: RoleKey) {
     return <AdminNavigator />;
   }
   // 005-executive-dashboard: the executive now has their own stack.
+  if (role === 'MANAGER') {
+    return <ManagerNavigator />;
+  }
+
   if (role === 'MARKETING_EXECUTIVE') {
     return <ExecutiveNavigator />;
   }
-  // MANAGER and SYSTEM_ADMIN (no mobile screens at all, PRD §4), and
+  // SYSTEM_ADMIN (API-only, PRD §4), EMPLOYEE (never signs in), and
   // anything else, still share the placeholder.
   return <ComingSoonNavigator />;
 }

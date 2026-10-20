@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -13,6 +14,8 @@ import {
   AppError,
   addExtraStopSchema,
   endBeatSchema,
+  managerAddStopSchema,
+  managerAssignmentsQuerySchema,
   startBeatSchema,
 } from '@field-sales/shared';
 
@@ -27,6 +30,10 @@ import { ExtraStopService } from './extra-stop.service';
 class StartBeatDto extends createZodDto(startBeatSchema) {}
 class EndBeatDto extends createZodDto(endBeatSchema) {}
 class AddExtraStopDto extends createZodDto(addExtraStopSchema) {}
+class ManagerAddStopDto extends createZodDto(managerAddStopSchema) {}
+class ManagerAssignmentsQueryDto extends createZodDto(
+  managerAssignmentsQuerySchema,
+) {}
 
 /**
  * 005-executive-dashboard / contracts/assignments.md. Marketing Executive
@@ -41,7 +48,6 @@ class AddExtraStopDto extends createZodDto(addExtraStopSchema) {}
 @ApiTags('assignments')
 @Controller('assignments')
 @UseGuards(RolesGuard)
-@Roles('MARKETING_EXECUTIVE')
 export class AssignmentsController {
   constructor(
     private readonly assignmentsService: AssignmentsService,
@@ -63,6 +69,7 @@ export class AssignmentsController {
    * It also takes no date parameter — accepting one from the client is exactly
    * the bug FR-005 exists to prevent.
    */
+  @Roles('MARKETING_EXECUTIVE')
   @Get('today')
   today(@Req() request: AuthenticatedRequest) {
     return this.assignmentsService.getToday(
@@ -72,6 +79,7 @@ export class AssignmentsController {
   }
 
   /** Returns `200`, not `201` — a repeated start is an expected outcome, not a creation. */
+  @Roles('MARKETING_EXECUTIVE')
   @Post(':id/start')
   @UseGuards(RequireIdempotencyKeyGuard)
   @Audited('beat-day.start', 'DailyAssignment')
@@ -88,6 +96,7 @@ export class AssignmentsController {
     );
   }
 
+  @Roles('MARKETING_EXECUTIVE')
   @Post(':id/end')
   @UseGuards(RequireIdempotencyKeyGuard)
   @Audited('beat-day.end', 'DailyAssignment')
@@ -119,6 +128,7 @@ export class AssignmentsController {
    * shop that is already on the day gets `409 SHOP_ALREADY_IN_BEAT`. Two
    * mechanisms, one situation each.
    */
+  @Roles('MARKETING_EXECUTIVE')
   @Post(':id/stops')
   @UseGuards(RequireIdempotencyKeyGuard)
   @Audited('extra-shop.create', 'AssignmentStop')
@@ -135,7 +145,51 @@ export class AssignmentsController {
     );
   }
 
-  /** `@Roles('MARKETING_EXECUTIVE')` already guarantees a tenant companyId — defensive, same posture as the other controllers. */
+  /**
+   * `POST /assignments/:id/stops/manager` — board 3.2 (010-manager-app).
+   * Path taken verbatim from `03-ARCHITECTURE.md:825`, which sits one line
+   * BELOW the executive's route above, exactly as slice 007 anticipated.
+   *
+   * **The role is per-method, not on the class**: this controller now holds
+   * four executive routes and one manager route, and a class-level
+   * `@Roles('MARKETING_EXECUTIVE','MANAGER')` would let a manager start an
+   * executive's beat and an executive add a stop to anyone's day.
+   */
+  /**
+   * `GET /assignments` — the manager's view of a day, for board 3.2. Path
+   * from `03-ARCHITECTURE.md:821`. Declared BEFORE `:id/...` routes so it
+   * cannot be shadowed.
+   */
+  @Roles('MANAGER')
+  @Get()
+  managerAssignments(
+    @Req() request: AuthenticatedRequest,
+    @Query() query: ManagerAssignmentsQueryDto,
+  ) {
+    return this.assignmentsService.listForManager(
+      this.requireCompanyId(request),
+      query,
+    );
+  }
+
+  @Roles('MANAGER')
+  @Post(':id/stops/manager')
+  @UseGuards(RequireIdempotencyKeyGuard)
+  @Audited('extra-shop.manager-create', 'AssignmentStop')
+  addManagerExtraStop(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: ManagerAddStopDto,
+  ) {
+    return this.extraStopService.addManagerExtraStop(
+      this.requireCompanyId(request),
+      this.requireExecutiveId(request),
+      id,
+      body,
+    );
+  }
+
+  /** The class no longer carries a role — each method declares its own. Defensive, same posture as the other controllers. */
   private requireCompanyId(request: AuthenticatedRequest): string {
     const companyId = request.user?.companyId;
     if (!companyId) {

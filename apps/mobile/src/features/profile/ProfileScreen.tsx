@@ -21,6 +21,7 @@ import {
 } from '../../api/client';
 import { AdminBottomNav } from '../../components/AdminBottomNav';
 import { ExecutiveBottomNav } from '../../components/ExecutiveBottomNav';
+import { ManagerBottomNav } from '../../components/ManagerBottomNav';
 import {
   OutlineIcon,
   type IconShape,
@@ -29,6 +30,7 @@ import { clearSession, getSession } from '../../lib/secureSession';
 import type {
   AdminStackParamList,
   ExecutiveStackParamList,
+  ManagerStackParamList,
 } from '../../navigation/RootNavigator';
 import {
   BG,
@@ -87,7 +89,7 @@ interface MeResponse {
  * params, so they intersect cleanly.
  */
 type ProfileNavigationProp = NativeStackNavigationProp<
-  AdminStackParamList & ExecutiveStackParamList,
+  AdminStackParamList & ExecutiveStackParamList & ManagerStackParamList,
   'Profile'
 >;
 
@@ -603,7 +605,15 @@ export function ProfileScreen() {
         the avatar menu, not the bottom bar", and none of the three profile
         boards marks a bar item as current.
       */}
-      {me?.role === 'MARKETING_EXECUTIVE' ? (
+      {me?.role === 'MANAGER' ? (
+        <ManagerBottomNav
+          active={null}
+          bottomInset={insets.bottom}
+          onAttendancePress={() => navigation.navigate('AttendanceDay')}
+          onReportsPress={() => navigation.navigate('PreviousDayReport')}
+          onVisitsPress={() => navigation.navigate('ManagerVisits', {})}
+        />
+      ) : me?.role === 'MARKETING_EXECUTIVE' ? (
         <ExecutiveBottomNav
           active={null}
           bottomInset={insets.bottom}

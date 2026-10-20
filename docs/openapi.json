@@ -1101,6 +1101,211 @@
         ]
       }
     },
+    "/assignments": {
+      "get": {
+        "operationId": "AssignmentsController_managerAssignments",
+        "parameters": [
+          {
+            "name": "date",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "executiveId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "assignments"
+        ]
+      }
+    },
+    "/assignments/{id}/stops/manager": {
+      "post": {
+        "operationId": "AssignmentsController_addManagerExtraStop",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagerAddStopDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "assignments"
+        ]
+      }
+    },
+    "/visits": {
+      "get": {
+        "operationId": "VisitsController_managerVisits",
+        "parameters": [
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "exclusiveMaximum": false,
+              "exclusiveMinimum": false,
+              "default": 10,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "date",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "outcome",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ORDER",
+                "NO_ORDER"
+              ]
+            }
+          },
+          {
+            "name": "outOfRange",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "executiveId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "beatPlanId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "visits"
+        ]
+      },
+      "post": {
+        "operationId": "VisitsController_submitVisit",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitVisitDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "visits"
+        ]
+      }
+    },
+    "/orders/{id}/deliver": {
+      "post": {
+        "operationId": "VisitsController_markDelivered",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkDeliveredDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "visits"
+        ]
+      }
+    },
     "/visits/mine": {
       "get": {
         "operationId": "VisitsController_myVisits",
@@ -1151,6 +1356,29 @@
                 "LAST_7_DAYS",
                 "LAST_30_DAYS"
               ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "visits"
+        ]
+      }
+    },
+    "/visits/{id}": {
+      "get": {
+        "operationId": "VisitsController_managerVisitDetail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -1258,30 +1486,6 @@
         ]
       }
     },
-    "/visits": {
-      "post": {
-        "operationId": "VisitsController_submitVisit",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SubmitVisitDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "visits"
-        ]
-      }
-    },
     "/shops/{id}/pin": {
       "post": {
         "operationId": "VisitsController_capturePin",
@@ -1315,6 +1519,48 @@
         ]
       }
     },
+    "/reports/previous-day": {
+      "get": {
+        "operationId": "ReportsController_previousDay",
+        "parameters": [
+          {
+            "name": "date",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "executiveId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "beatPlanId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "reports"
+        ]
+      }
+    },
     "/reports/executive-totals": {
       "get": {
         "operationId": "ReportsController_executiveTotals",
@@ -1341,6 +1587,52 @@
         },
         "tags": [
           "reports"
+        ]
+      }
+    },
+    "/attendance": {
+      "get": {
+        "operationId": "AttendanceController_day",
+        "parameters": [
+          {
+            "name": "date",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "attendance"
+        ]
+      },
+      "post": {
+        "operationId": "AttendanceController_record",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordAttendanceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "attendance"
         ]
       }
     }
@@ -2222,6 +2514,28 @@
           }
         }
       },
+      "ManagerAddStopDto": {
+        "type": "object",
+        "properties": {
+          "shopId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 280
+          }
+        },
+        "required": [
+          "shopId",
+          "reason"
+        ]
+      },
+      "MarkDeliveredDto": {
+        "type": "object",
+        "properties": {}
+      },
       "SubmitVisitDto": {
         "type": "object",
         "properties": {
@@ -2355,6 +2669,51 @@
           "accuracyMeters",
           "capturedAt",
           "source"
+        ]
+      },
+      "RecordAttendanceDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "businessDate": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "session": {
+            "type": "string",
+            "enum": [
+              "MORNING",
+              "EVENING"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PRESENT",
+              "ABSENT",
+              "LEAVE",
+              "HOLIDAY",
+              "WEEKLY_OFF"
+            ]
+          },
+          "actualTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "changeReason": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 280
+          }
+        },
+        "required": [
+          "userId",
+          "businessDate",
+          "session",
+          "status"
         ]
       }
     }
