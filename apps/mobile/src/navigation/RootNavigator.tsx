@@ -25,6 +25,7 @@ import { RecordOrderScreen } from '../features/executive/RecordOrderScreen';
 import { ShopVisitScreen } from '../features/executive/ShopVisitScreen';
 import { TodaysBeatScreen } from '../features/executive/TodaysBeatScreen';
 import type { BeatPlanSummaryForEdit } from '../features/admin/BeatPlansListScreen';
+import { AdminVisitsScreen } from '../features/admin/AdminVisitsScreen';
 import { HomeScreen } from '../features/admin/HomeScreen';
 import { ProfileScreen } from '../features/profile/ProfileScreen';
 import { ShopFormScreen } from '../features/admin/ShopFormScreen';
@@ -133,6 +134,23 @@ export type AdminStackParamList = {
   BeatPlanForm: { beatPlan?: BeatPlanSummaryForEdit } | undefined;
   /** 004-brands-reasons-crud, PRD §4 screen 4.12. One screen, two tabs — no separate form screen; rows are added, reordered and toggled in place. */
   BrandsReasonsList: undefined;
+  /**
+   * 011-admin-visits, PRD §4 screen 4.2. Params preset the tab, exactly as
+   * the manager's `ManagerVisits` does.
+   */
+  AdminVisits: { outcome?: 'ORDER' | 'NO_ORDER'; outOfRange?: boolean };
+  /**
+   * 011-admin-visits, PRD §4 screens 4.3–4.5. Deliberately the SAME route
+   * names and param shapes as `ManagerStackParamList`'s, because they are
+   * the same three components: the admin boards decode byte-identical to
+   * boards 3.4–3.6 (one name in the sample data aside), and all three
+   * screens only ever `goBack()`, so neither needs to know which stack it
+   * was pushed onto. Renaming one of these without renaming its manager
+   * twin would break that reuse.
+   */
+  OrderVisit: { visitId: string };
+  NoOrderVisit: { visitId: string };
+  OutOfRangeVisit: { visitId: string };
 };
 
 /** 005-executive-dashboard, PRD §4 screen 1.3. The executive's only built destination so far; the bottom bar's other two tabs are rendered but not yet navigable. */
@@ -316,6 +334,33 @@ function AdminNavigator() {
       <AdminStack.Screen
         name="BrandsReasonsList"
         component={BrandsReasonsListScreen}
+        options={{ headerShown: false }}
+      />
+      <AdminStack.Screen
+        name="AdminVisits"
+        component={AdminVisitsScreen}
+        options={{ headerShown: false }}
+      />
+      {/*
+        Boards 4.3–4.5 are the manager's 3.4–3.6 components, registered a
+        second time here under the same route names. Decoding both sets
+        showed identical markup, and each screen's only navigation call is
+        `goBack()`, so there is nothing stack-specific to parameterise — a
+        second copy would only be a second thing to keep in step.
+      */}
+      <AdminStack.Screen
+        name="OrderVisit"
+        component={OrderVisitScreen}
+        options={{ headerShown: false }}
+      />
+      <AdminStack.Screen
+        name="NoOrderVisit"
+        component={NoOrderVisitScreen}
+        options={{ headerShown: false }}
+      />
+      <AdminStack.Screen
+        name="OutOfRangeVisit"
+        component={OutOfRangeVisitScreen}
         options={{ headerShown: false }}
       />
     </AdminStack.Navigator>

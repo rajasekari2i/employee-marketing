@@ -1,5 +1,6 @@
 import Geolocation from '@react-native-community/geolocation';
-import { PermissionsAndroid, Platform } from 'react-native';
+
+import { ensureLocationPermission } from './permissions';
 
 /**
  * Device positioning for the beat-day commands (005-executive-dashboard,
@@ -7,9 +8,10 @@ import { PermissionsAndroid, Platform } from 'react-native';
  * location — before this slice the only mapping was an admin tapping a point
  * on a map, which needs no permission and no native module.
  *
- * Permissions use React Native core's `PermissionsAndroid` rather than
- * `react-native-permissions`: this feature requests exactly one permission
- * group on one platform, so a second dependency would earn nothing.
+ * The permission itself lives in `./permissions`, which both this module and
+ * the app's launch-time ask share — the rationale copy below the fold there
+ * is the only disclosure of what location is used for, so it must have one
+ * home, not two.
  *
  * Failures are returned as a discriminated union rather than thrown, because
  * the three cases need visibly different copy (FR-015) and a raw platform
@@ -95,54 +97,6 @@ function configureOnce(): void {
   configured = true;
 }
 
-/**
- * Asks for location permission, explaining why — the rationale Android shows
- * is the only place the executive is told what the app wants it for.
- */
-async function ensurePermission(): Promise<
-  'GRANTED' | 'PERMISSION_DENIED' | 'PERMISSION_BLOCKED'
-> {
-  if (Platform.OS !== 'android') {
-    return 'GRANTED';
-  }
-
-  const already = await PermissionsAndroid.check(
-    PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-  );
-  if (already) {
-    return 'GRANTED';
-  }
-
-  const result = await PermissionsAndroid.request(
-    PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-    {
-      title: 'Location needed for your beat',
-      // LOAD-BEARING, not cosmetic (006 FR-021, 007 FR-020). The
-      // confirm-and-submit screen deliberately says nothing about location
-      // (006 FR-018), so this prompt is the ONLY place the app discloses
-      // what it does with it. It must therefore cover every use, and
-      // 007-extra-shops adds a third: board 1.4 reads the position to order
-      // the shop picker nearest-first and to show each shop's distance.
-      // Adding a use without widening this string would leave the
-      // disclosure incomplete.
-      message:
-        'Your location is saved when you start and end the beat, and when you record a visit at a shop. It is also used to find shops near you when you add an extra shop.',
-      buttonPositive: 'Allow',
-      buttonNegative: 'Not now',
-    },
-  );
-
-  if (result === PermissionsAndroid.RESULTS.GRANTED) {
-    return 'GRANTED';
-  }
-  // "Never ask again" — retrying in-app cannot help, so the screen must send
-  // the executive to Settings instead of offering a pointless retry.
-  if (result === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
-    return 'PERMISSION_BLOCKED';
-  }
-  return 'PERMISSION_DENIED';
-}
-
 /** One attempt at a fix. Resolves either a position or the platform's own error. */
 function readOnce(
   options: (typeof ATTEMPTS)[number],
@@ -218,9 +172,13 @@ export function getCurrentPosition(): Promise<LocationResult> {
 async function readPositionWithFallback(): Promise<LocationResult> {
   configureOnce();
 
-  const permission = await ensurePermission();
+  const permission = await ensureLocationPermission();
   if (permission !== 'GRANTED') {
-    return { ok: false, failure: permission };
+    return {
+      ok: false,
+      failure:
+        permission === 'BLOCKED' ? 'PERMISSION_BLOCKED' : 'PERMISSION_DENIED',
+    };
   }
 
   let lastCode: number = POSITION_ERROR.POSITION_UNAVAILABLE;

@@ -511,6 +511,7 @@ export function HomeScreen() {
         active="Home"
         bottomInset={insets.bottom}
         onHomePress={() => {}}
+        onVisitsPress={() => navigation.navigate('AdminVisits', {})}
         onBeatsPress={() => navigation.navigate('BeatPlansList')}
         onShopsPress={() => navigation.navigate('ShopsList')}
       />

@@ -5,10 +5,13 @@ import { OutlineIcon, type IconShape } from './icons/OutlineIcon';
 /**
  * The bottom nav bar on every Company Admin screen that has one
  * (`docs/ui-design/Field_Sales_Beat_App.html` §4.1/§4.14 both carry it
- * identically — same 4 items, same icons, same "Home" is the only
- * destination actually built). Shared so the icon paths (and the fix for
- * the "Visits" icon's outer clipboard rect, missing from the first,
- * Home-only copy of this) live in exactly one place.
+ * identically — same 4 items, same icons). Shared so the icon paths (and
+ * the fix for the "Visits" icon's outer clipboard rect, missing from the
+ * first, Home-only copy of this) live in exactly one place.
+ *
+ * As of 011-admin-visits all four items have a destination; each is still an
+ * optional prop defaulting to the "coming soon" alert, so a screen that
+ * hasn't been updated to pass one keeps working.
  */
 
 const BLUE = '#1D4ED8';
@@ -70,6 +73,7 @@ function NavItem({
 export function AdminBottomNav({
   active,
   onHomePress,
+  onVisitsPress,
   onBeatsPress,
   onShopsPress,
   bottomInset = 0,
@@ -77,6 +81,8 @@ export function AdminBottomNav({
   /** `null` when the current screen isn't one of these 4 (e.g. Profile). */
   active: AdminBottomNavTab | null;
   onHomePress: () => void;
+  /** 011-admin-visits: navigates to the company-wide visits list, board 4.2. Defaults to the "coming soon" alert for any screen that hasn't been updated to pass this yet. */
+  onVisitsPress?: () => void;
   /** 003-beat-plans-crud: navigates to the beat plan directory. Defaults to the "coming soon" alert for any screen that hasn't been updated to pass this yet. */
   onBeatsPress?: () => void;
   /** 002-shops-crud: navigates to the shop directory. Defaults to the "coming soon" alert for any screen that hasn't been updated to pass this yet. */
@@ -108,7 +114,7 @@ export function AdminBottomNav({
         active={active === 'Visits'}
         icon={ICON_VISITS}
         label="Visits"
-        onPress={() => comingSoon('Visits')}
+        onPress={onVisitsPress ?? (() => comingSoon('Visits'))}
       />
       <NavItem
         active={active === 'Beats'}

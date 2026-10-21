@@ -520,6 +520,7 @@ export function ShopsListScreen() {
           active="Shops"
           bottomInset={insets.bottom}
           onHomePress={() => navigation.navigate('Home')}
+          onVisitsPress={() => navigation.navigate('AdminVisits', {})}
           onBeatsPress={() => navigation.navigate('BeatPlansList')}
           onShopsPress={() => {}}
         />

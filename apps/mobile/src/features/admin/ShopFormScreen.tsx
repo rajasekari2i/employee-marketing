@@ -32,6 +32,10 @@ import {
   type IconShape,
 } from '../../components/icons/OutlineIcon';
 import { GOOGLE_MAPS_API_KEY } from '../../config';
+import {
+  cameraPermissionMessage,
+  ensureCameraPermission,
+} from '../../lib/permissions';
 import type { AdminStackParamList } from '../../navigation/RootNavigator';
 import { BG, BLUE, BORDER, INK, LABEL, MUTED } from './adminDesign';
 import type { ShopSummaryForEdit } from './ShopsListScreen';
@@ -292,10 +296,39 @@ export function ShopFormScreen() {
   const [submitting, setSubmitting] = useState(false);
 
   async function pickPhoto(source: 'camera' | 'gallery'): Promise<void> {
+    // The launch-time ask (App.tsx) usually means this is already granted,
+    // but it can be declined there or revoked from Settings afterwards —
+    // and image-picker will not open the camera without it, it just returns
+    // an error. Gallery needs nothing: Android 13+ hands back a photo the
+    // user picked themselves.
+    if (source === 'camera') {
+      const permission = await ensureCameraPermission();
+      if (permission !== 'GRANTED') {
+        Alert.alert('Camera unavailable', cameraPermissionMessage(permission));
+        return;
+      }
+    }
+
     const result =
       source === 'camera'
         ? await launchCamera({ mediaType: 'photo', quality: 0.8 })
         : await launchImageLibrary({ mediaType: 'photo', quality: 0.8 });
+
+    if (result.didCancel) {
+      return;
+    }
+    // Surfaced, not swallowed. Dropping this is what made a blocked camera
+    // look like a dead button.
+    if (result.errorCode) {
+      Alert.alert(
+        source === 'camera'
+          ? 'Could not open the camera'
+          : 'Could not open photos',
+        result.errorMessage ?? 'Something went wrong. Please try again.',
+      );
+      return;
+    }
+
     const asset = result.assets?.[0];
     if (!asset?.uri) {
       return;
