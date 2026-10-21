@@ -382,6 +382,7 @@ export function BeatPlansListScreen() {
         active="Beats"
         bottomInset={insets.bottom}
         onHomePress={() => navigation.navigate('Home')}
+        onVisitsPress={() => navigation.navigate('AdminVisits', {})}
         onBeatsPress={() => {}}
         onShopsPress={() => navigation.navigate('ShopsList')}
       />

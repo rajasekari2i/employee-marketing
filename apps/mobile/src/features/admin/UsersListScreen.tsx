@@ -446,6 +446,7 @@ export function UsersListScreen() {
         active={null}
         bottomInset={insets.bottom}
         onHomePress={() => navigation.goBack()}
+        onVisitsPress={() => navigation.navigate('AdminVisits', {})}
         onBeatsPress={() => navigation.navigate('BeatPlansList')}
         onShopsPress={() => navigation.navigate('ShopsList')}
       />

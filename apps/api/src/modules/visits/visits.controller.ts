@@ -62,16 +62,25 @@ export class VisitsController {
   ) {}
 
   /**
-   * `GET /visits` — the MANAGER's list, board 3.3 (010-manager-app). Path
-   * taken verbatim from `03-ARCHITECTURE.md:829`.
+   * `GET /visits` — the company-wide list: board 3.3 for a Manager
+   * (010-manager-app) and board 4.2 for a Company Admin (011-admin-visits).
+   * Path taken verbatim from `03-ARCHITECTURE.md:829`.
    *
-   * **A separate route from `GET /visits/mine` by design.** That split is
-   * the architecture's own and it is load-bearing: this response carries
+   * **One route for two roles, not two routes.** `ManagerVisitsService.list`
+   * scopes by `companyId` alone — there has never been a manager-level
+   * filter in it — so both roles are asking the identical question of the
+   * identical data, and boards 3.3 and 4.2 differ only in their subtitle and
+   * their bottom bar. A second route would be the same query twice.
+   *
+   * **Still a separate route from `GET /visits/mine` by design.** That split
+   * is the architecture's own and it is load-bearing: this response carries
    * `distanceMeters` and `isExceedRange`, which the executive's must never.
    * Two routes backed by two services means neither can acquire the other's
-   * fields by someone refactoring one.
+   * fields by someone refactoring one. Adding COMPANY_ADMIN here does not
+   * weaken that — the executive is the role the rule is about (FR-046/047),
+   * and they are not on this list.
    */
-  @Roles('MANAGER')
+  @Roles('MANAGER', 'COMPANY_ADMIN')
   @Get('visits')
   async managerVisits(
     @Req() request: AuthenticatedRequest,
@@ -84,14 +93,18 @@ export class VisitsController {
   }
 
   /**
-   * `POST /orders/:id/deliver` — board 3.4's action.
+   * `POST /orders/:id/deliver` — board 3.4's action, and board 4.3's
+   * (011-admin-visits): the admin board is titled "Order visit · mark
+   * delivered" and its markup is byte-identical to 3.4's, so the admin gets
+   * the action, not a read-only copy of the screen.
    *
    * The body is `z.object({}).strict()`: who marked it is the JWT's and when
    * is the server's clock, so a body carrying `deliveredBy` or `deliveredAt`
    * is a `400`. Marking an already-delivered order is a `409`, never a
-   * silent overwrite of who marked it first.
+   * silent overwrite of who marked it first — which is also what stops an
+   * admin and a manager racing each other over the same order.
    */
-  @Roles('MANAGER')
+  @Roles('MANAGER', 'COMPANY_ADMIN')
   @Post('orders/:id/deliver')
   @UseGuards(RequireIdempotencyKeyGuard)
   @Audited('order.delivered', 'Order')
@@ -155,19 +168,22 @@ export class VisitsController {
   // `visits/...` path, because Nest matches routes in declaration order
   // within a controller. Declared earlier, it swallows `GET /visits/mine`:
   // the executive's own history then resolves to the manager's detail
-  // handler, fails its `@Roles('MANAGER')` gate, and returns 403 — which is
+  // handler, fails its `@Roles('MANAGER', 'COMPANY_ADMIN')` gate, and
+  // returns 403 — which is
   // exactly what happened when this was written the other way round, and
   // what quickstart Scenario 10 caught.
   // ──────────────────────────────────────────────────────────────────────
   /**
-   * `GET /visits/:id` — boards 3.4, 3.5 AND 3.6 from one route.
+   * `GET /visits/:id` — boards 3.4, 3.5 AND 3.6 from one route, and their
+   * admin twins 4.3, 4.4 and 4.5 (011-admin-visits), whose decoded markup is
+   * identical to the manager's bar one name in the sample data.
    *
    * The client picks the screen; the server cannot know which. The same
    * out-of-range order shows the read-only range screen from the
    * Out-of-range tab and the delivery screen from the Order tab (FR-029), so
    * this returns what all three need rather than taking a mode parameter.
    */
-  @Roles('MANAGER')
+  @Roles('MANAGER', 'COMPANY_ADMIN')
   @Get('visits/:id')
   async managerVisitDetail(
     @Req() request: AuthenticatedRequest,

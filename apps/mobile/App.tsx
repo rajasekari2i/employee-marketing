@@ -1,8 +1,10 @@
 import './global.css';
 
+import { useEffect } from 'react';
 import { LogBox, StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { requestStartupPermissions } from './src/lib/permissions';
 import { RootNavigator } from './src/navigation/RootNavigator';
 
 /**
@@ -36,6 +38,16 @@ import { RootNavigator } from './src/navigation/RootNavigator';
  */
 LogBox.ignoreLogs(['ImageBackground is deprecated']);
 export default function App() {
+  // Location and camera, asked for as the app opens rather than at the
+  // moment each one is first needed. Android has granted no dangerous
+  // permission at install time since API 23, so this launch-time ask is as
+  // close to "granted on install" as the platform allows; see
+  // `src/lib/permissions.ts`. Fire-and-forget on purpose — the first screen
+  // renders behind the system dialogs, and every caller re-checks anyway.
+  useEffect(() => {
+    void requestStartupPermissions();
+  }, []);
+
   return (
     <SafeAreaProvider>
       <StatusBar barStyle="dark-content" />

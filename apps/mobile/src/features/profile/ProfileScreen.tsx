@@ -31,6 +31,10 @@ import {
   logoutBlockedMessage,
   sendable,
 } from '../../lib/outbox';
+import {
+  cameraPermissionMessage,
+  ensureCameraPermission,
+} from '../../lib/permissions';
 import { clearSession, getSession } from '../../lib/secureSession';
 import type {
   AdminStackParamList,
@@ -248,7 +252,27 @@ export function ProfileScreen() {
   }
 
   async function pickFromCamera(): Promise<void> {
+    // See ShopFormScreen's identical guard: image-picker returns an error
+    // rather than opening the camera when CAMERA is declared but not
+    // granted, so without this the button appears dead.
+    const permission = await ensureCameraPermission();
+    if (permission !== 'GRANTED') {
+      setPhotoError(cameraPermissionMessage(permission));
+      return;
+    }
+
+    setPhotoError(null);
     const result = await launchCamera({ mediaType: 'photo', quality: 0.8 });
+    if (result.didCancel) {
+      return;
+    }
+    if (result.errorCode) {
+      setPhotoError(
+        result.errorMessage ?? 'Could not open the camera. Please try again.',
+      );
+      return;
+    }
+
     const asset = result.assets?.[0];
     if (asset) {
       await uploadAsset(asset);
@@ -655,6 +679,7 @@ export function ProfileScreen() {
           active={null}
           bottomInset={insets.bottom}
           onHomePress={() => navigation.goBack()}
+          onVisitsPress={() => navigation.navigate('AdminVisits', {})}
           onBeatsPress={() => navigation.navigate('BeatPlansList')}
           onShopsPress={() => navigation.navigate('ShopsList')}
         />

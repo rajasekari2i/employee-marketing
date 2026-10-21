@@ -40,9 +40,15 @@ export class OrderDeliveryService {
     return tx;
   }
 
+  /**
+   * `actorId`, not `managerId`: as of 011-admin-visits a Company Admin marks
+   * deliveries from board 4.3 too. Who it was is still taken from the
+   * verified JWT and stored on `deliveredBy`, so the attribution below reads
+   * back whichever of the two it actually was.
+   */
   async markDelivered(
     companyId: string,
-    managerId: string,
+    actorId: string,
     orderId: string,
   ): Promise<MarkDeliveredResult> {
     const tx = await this.scopeToCaller(companyId);
@@ -60,9 +66,9 @@ export class OrderDeliveryService {
 
     if (order.deliveryStatus === 'DELIVERED') {
       // A REFUSAL, not a silent success. Reporting success would tell this
-      // manager they marked something another manager actually marked, and
-      // would overwrite the attribution these columns exist to keep
-      // (FR-024, SC-008).
+      // caller they marked something someone else actually marked, and would
+      // overwrite the attribution these columns exist to keep (FR-024,
+      // SC-008). It is also what stops an admin and a manager racing.
       throw new AppError(
         'ORDER_ALREADY_DELIVERED',
         'This order has already been marked delivered.',
@@ -77,12 +83,12 @@ export class OrderDeliveryService {
         // The SERVER's clock and the JWT's user — neither is accepted from
         // the body, which is `z.object({}).strict()`.
         deliveredAt,
-        deliveredBy: managerId,
+        deliveredBy: actorId,
       },
     });
 
     const marker = await tx.user.findUnique({
-      where: { id: managerId },
+      where: { id: actorId },
       select: { name: true },
     });
 
