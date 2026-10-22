@@ -1590,6 +1590,172 @@
         ]
       }
     },
+    "/salary-runs": {
+      "get": {
+        "operationId": "SalaryController_getRun",
+        "parameters": [
+          {
+            "name": "year",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 2000,
+              "maximum": 2100,
+              "exclusiveMaximum": false,
+              "exclusiveMinimum": false,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "month",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 12,
+              "exclusiveMaximum": false,
+              "exclusiveMinimum": false,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "version",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "exclusiveMinimum": false,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "salary"
+        ]
+      },
+      "post": {
+        "operationId": "SalaryController_generate",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateSalaryRunDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "salary"
+        ]
+      }
+    },
+    "/salary-runs/{id}/finalise": {
+      "post": {
+        "operationId": "SalaryController_finalise",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinaliseSalaryRunDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "salary"
+        ]
+      }
+    },
+    "/salary-runs/{id}/lines/{userId}": {
+      "get": {
+        "operationId": "SalaryController_getLine",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "salary"
+        ]
+      }
+    },
+    "/salary-runs/{id}/payslip/{userId}.pdf": {
+      "get": {
+        "operationId": "SalaryController_payslip",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "salary"
+        ]
+      }
+    },
     "/attendance": {
       "get": {
         "operationId": "AttendanceController_day",
@@ -2670,6 +2836,33 @@
           "capturedAt",
           "source"
         ]
+      },
+      "GenerateSalaryRunDto": {
+        "type": "object",
+        "properties": {
+          "year": {
+            "type": "integer",
+            "minimum": 2000,
+            "exclusiveMinimum": false,
+            "maximum": 2100,
+            "exclusiveMaximum": false
+          },
+          "month": {
+            "type": "integer",
+            "minimum": 1,
+            "exclusiveMinimum": false,
+            "maximum": 12,
+            "exclusiveMaximum": false
+          }
+        },
+        "required": [
+          "year",
+          "month"
+        ]
+      },
+      "FinaliseSalaryRunDto": {
+        "type": "object",
+        "properties": {}
       },
       "RecordAttendanceDto": {
         "type": "object",

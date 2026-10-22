@@ -138,6 +138,14 @@ enum LatenessFlag {
   DELAY_2H
 }
 
+// 012-monthly-salary-run. Two values, both with a writer in this slice — no
+// third is added speculatively, the discipline that kept ReviewStatus from
+// growing in 010.
+enum SalaryRunStatus {
+  DRAFT
+  FINALISED
+}
+
 enum DeliveryStatus {
   TO_DELIVER
   DELIVERED
@@ -265,6 +273,8 @@ model User {
   visits            Visit[]
   // 010-manager-app: the reverse side of Attendance.userId.
   attendance        Attendance[]
+  // 012-monthly-salary-run: the reverse side of SalaryRunLine.userId.
+  salaryRunLines    SalaryRunLine[]
 
   @@unique([companyId, username])
   @@index([companyId, status])
@@ -965,4 +975,79 @@ model Attendance {
   @@index([companyId, businessDate, session, isActive])
   @@index([companyId, userId, businessDate])
   @@map("attendance")
+}
+
+// ---------------------------------------------------------------------------
+// Salary (012-monthly-salary-run)
+// ---------------------------------------------------------------------------
+
+/// One company, one month, one version.
+///
+/// **The period is addressed as two ints, not a date range** — no boundary
+/// ambiguity, and no timezone baked into the key. `CompanyClock` decides what
+/// month it is; this table only records which one.
+///
+/// `grossTotal` is STORED, never recomputed when the run is read. That is the
+/// freeze: a finalised figure must not become a function of present-day
+/// master data (FR-028, BR-24).
+model SalaryRun {
+  id        String @id @default(uuid())
+  companyId String @map("company_id")
+
+  periodYear  Int @map("period_year")
+  periodMonth Int @map("period_month")
+
+  version Int             @default(1)
+  status  SalaryRunStatus @default(DRAFT)
+
+  grossTotal Decimal @map("gross_total") @db.Decimal(14, 2)
+
+  generatedBy String   @map("generated_by")
+  generatedAt DateTime @default(now()) @map("generated_at")
+
+  // Null until finalised; both set together, never one without the other.
+  finalisedBy String?   @map("finalised_by")
+  finalisedAt DateTime? @map("finalised_at")
+
+  lines SalaryRunLine[]
+
+  // LOAD-BEARING: `version` in the key is what makes two live versions of one
+  // month unrepresentable, and what makes two admins regenerating at once
+  // produce one winner and one P2002 rather than a silent overwrite — exactly
+  // as Attendance's key does for amendments.
+  @@unique([companyId, periodYear, periodMonth, version])
+  @@index([companyId, periodYear, periodMonth])
+  @@map("salary_runs")
+}
+
+/// One employee's place in a run.
+///
+/// **Written once, never updated.** Every figure here — and every entry in
+/// `breakdown` — is the value computed at generation time. A correction never
+/// edits a line; it produces a new SalaryRun at version + 1.
+///
+/// `breakdown` is `[{from, to, units, rate, amount}]`: the per-date-range
+/// sub-lines board 4.13 renders. It is stored rather than derived because a
+/// sub-line names a rate AS IT WAS on a date — recomputing it from
+/// UserSalaryRate would let a back-dated rate correction rewrite a finalised
+/// payslip. `rate` is null for dates covered by no rate row, so unrated work
+/// stays visible instead of being silently priced at zero (FR-021).
+model SalaryRunLine {
+  id        String @id @default(uuid())
+  companyId String @map("company_id")
+
+  salaryRunId String    @map("salary_run_id")
+  salaryRun   SalaryRun @relation(fields: [salaryRunId], references: [id], onDelete: Cascade)
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  payableUnits Decimal @map("payable_units") @db.Decimal(6, 2)
+  amount       Decimal @db.Decimal(12, 2)
+
+  breakdown Json
+
+  @@unique([salaryRunId, userId])
+  @@index([companyId, userId])
+  @@map("salary_run_lines")
 }

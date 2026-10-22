@@ -35,9 +35,9 @@ import {
  * taken verbatim from `docs/ui-design/Field_Sales_Beat_App.html` §4.1 — see
  * that board for the source of every hex value and SVG path here.
  *
- * Only two tiles have a real backend behind them yet (CLAUDE.md's build
- * order: 001-foundation/002-auth/003-company-and-users are built; 004
- * through 014 — masters, shops, beat plans, salary, reports — are not).
+ * Tiles are retired from the "coming soon" alert one slice at a time as
+ * their backend lands — masters, shops, beat plans and, as of
+ * 012-monthly-salary-run, Salary. Reports is the one still unbuilt.
  * "Users & roles" shows a real count from `GET /users`; "Company settings"
  * shows the fixed architecture defaults every company is created with
  * (`CompanySettings`'s `@default(...)`s) since no endpoint exists yet to
@@ -433,7 +433,7 @@ export function HomeScreen() {
           />
           <Tile
             icon={ICON_SALARY}
-            onPress={() => comingSoon('Salary')}
+            onPress={() => navigation.navigate('SalaryRun')}
             subtitle="Coming soon"
             title="Salary"
           />

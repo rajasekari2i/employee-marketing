@@ -27,6 +27,8 @@ import { TodaysBeatScreen } from '../features/executive/TodaysBeatScreen';
 import type { BeatPlanSummaryForEdit } from '../features/admin/BeatPlansListScreen';
 import { AdminVisitsScreen } from '../features/admin/AdminVisitsScreen';
 import { HomeScreen } from '../features/admin/HomeScreen';
+import { SalaryRunScreen } from '../features/admin/SalaryRunScreen';
+import { SalaryEmployeeDetailScreen } from '../features/admin/SalaryEmployeeDetailScreen';
 import { ProfileScreen } from '../features/profile/ProfileScreen';
 import { ShopFormScreen } from '../features/admin/ShopFormScreen';
 import { ShopsListScreen } from '../features/admin/ShopsListScreen';
@@ -139,6 +141,19 @@ export type AdminStackParamList = {
    * the manager's `ManagerVisits` does.
    */
   AdminVisits: { outcome?: 'ORDER' | 'NO_ORDER'; outOfRange?: boolean };
+  /**
+   * 012-monthly-salary-run, PRD §4 screen 4.13. No params: the server
+   * decides the period (the previous month, in the company's timezone), so
+   * the client cannot name a default and get it wrong.
+   */
+  SalaryRun: undefined;
+  /**
+   * 012-monthly-salary-run. One employee's month — the only screen in the
+   * product with NO board, designed under FR-047 on the user's explicit
+   * instruction. Addressed by run AND user because a month has versions:
+   * `runId` says which one is being explained.
+   */
+  SalaryEmployeeDetail: { runId: string; userId: string };
   /**
    * 011-admin-visits, PRD §4 screens 4.3–4.5. Deliberately the SAME route
    * names and param shapes as `ManagerStackParamList`'s, because they are
@@ -339,6 +354,16 @@ function AdminNavigator() {
       <AdminStack.Screen
         name="AdminVisits"
         component={AdminVisitsScreen}
+        options={{ headerShown: false }}
+      />
+      <AdminStack.Screen
+        name="SalaryRun"
+        component={SalaryRunScreen}
+        options={{ headerShown: false }}
+      />
+      <AdminStack.Screen
+        name="SalaryEmployeeDetail"
+        component={SalaryEmployeeDetailScreen}
         options={{ headerShown: false }}
       />
       {/*
