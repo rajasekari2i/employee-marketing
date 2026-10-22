@@ -82,9 +82,13 @@ export function CaptureShopPinScreen() {
   const readPosition = useCallback(async () => {
     setReading(true);
     setError(null);
-    const fix = await getCurrentPosition();
+    // `fresh`, not the default: the server REFUSES a pin coarser than the
+    // company's limit, so a cached reading that already failed the gate is
+    // worthless here — and handing it back is what made Retry GPS look
+    // broken. This asks the hardware every time.
+    const fix = await getCurrentPosition('fresh');
     if (!fix.ok) {
-      setError(locationFailureMessage(fix.failure));
+      setError(locationFailureMessage(fix.failure, 'Retry GPS'));
       setReading(false);
       return;
     }

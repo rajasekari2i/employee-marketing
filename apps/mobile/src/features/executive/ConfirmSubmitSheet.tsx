@@ -55,7 +55,7 @@ export function ConfirmSubmitSheet({
     // Captured silently — see this component's doc comment.
     const fix = await getCurrentPosition();
     if (!fix.ok) {
-      setError(locationFailureMessage(fix.failure));
+      setError(locationFailureMessage(fix.failure, 'Submit visit'));
       setBusy(false);
       return;
     }
