@@ -38,20 +38,38 @@ class CreateShopDto extends createZodDto(createShopSchema) {}
 class UpdateShopDto extends createZodDto(updateShopSchema) {}
 
 /**
- * 002-shops-crud / contracts/shops.md. Every route on this controller is
- * Company-Admin-only and an ORDINARY authenticated route (not `@Public()`,
- * not `@SkipTenant()`) — see `shops.service.ts`'s class doc for how it
- * re-scopes the request's own transaction to the caller's company before
- * touching `Shop`/`ShopPhoto`/`ShopPinChange`, same pattern
- * `users.service.ts` established.
+ * 002-shops-crud / contracts/shops.md. Every route here is an ORDINARY
+ * authenticated route (not `@Public()`, not `@SkipTenant()`) — see
+ * `shops.service.ts`'s class doc for how it re-scopes the request's own
+ * transaction to the caller's company before touching
+ * `Shop`/`ShopPhoto`/`ShopPinChange`, same pattern `users.service.ts`
+ * established.
+ *
+ * **Roles are per-method, never class-level.** Writing shops is the Company
+ * Admin's alone; *reading* them is also the Manager's, because board 3.2
+ * ("Add shop to today") is a shop search and FR-042 requires it. A
+ * class-level `@Roles('COMPANY_ADMIN','MANAGER')` would have handed the
+ * manager `POST` and `PATCH` as well — the same trap `reports.controller.ts`
+ * and `visits.controller.ts` avoided the same way.
  */
 @ApiTags('shops')
 @Controller('shops')
 @UseGuards(RolesGuard)
-@Roles('COMPANY_ADMIN')
 export class ShopsController {
   constructor(private readonly shopsService: ShopsService) {}
 
+  /**
+   * Read-only, and the one route a Manager may call.
+   *
+   * `03-ARCHITECTURE.md:814` groups `GET/POST/PATCH /shops` on one line
+   * marked "Company Admin", which is what produced the class-level gate and
+   * made board 3.2's search fail with `403` for every manager. That line is
+   * the outlier: `02-PRD.md`'s capability matrix gives the Manager `R` on
+   * Shops, the seeded `MANAGER` role carries `shops:read:company`, and
+   * FR-042 has the manager searching the company's shops. The three agree;
+   * the table collapsed a read and two writes into one row.
+   */
+  @Roles('COMPANY_ADMIN', 'MANAGER')
   @Get()
   list(
     @Req() request: AuthenticatedRequest,
@@ -64,6 +82,7 @@ export class ShopsController {
     );
   }
 
+  @Roles('COMPANY_ADMIN')
   @Post()
   @UseGuards(RequireIdempotencyKeyGuard)
   @Audited('shop.create', 'Shop')
@@ -75,6 +94,7 @@ export class ShopsController {
     );
   }
 
+  @Roles('COMPANY_ADMIN')
   @Patch(':id')
   @UseGuards(RequireIdempotencyKeyGuard)
   @Audited('shop.update', 'Shop')
@@ -92,6 +112,7 @@ export class ShopsController {
   }
 
   /** Multipart upload, mirroring `files.controller.ts`'s `uploadAvatar` route exactly (same `FileInterceptor`/`RequireIdempotencyKeyGuard` shape). */
+  @Roles('COMPANY_ADMIN')
   @Post(':id/photos')
   @UseGuards(RequireIdempotencyKeyGuard)
   @Audited('shop.photo.add', 'Shop')
@@ -117,6 +138,7 @@ export class ShopsController {
     );
   }
 
+  @Roles('COMPANY_ADMIN')
   @Delete(':id/photos/:photoId')
   @HttpCode(204)
   @Audited('shop.photo.remove', 'Shop')
@@ -132,7 +154,7 @@ export class ShopsController {
     );
   }
 
-  /** `@Roles('COMPANY_ADMIN')` on the class already guarantees a tenant companyId exists — defensive, same posture as `users.controller.ts`. */
+  /** Every route's own `@Roles` already guarantees a tenant companyId exists — defensive, same posture as `users.controller.ts`. */
   private requireCompanyId(request: AuthenticatedRequest): string {
     const companyId = request.user?.companyId;
     if (!companyId) {

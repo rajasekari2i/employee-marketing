@@ -100,7 +100,13 @@ export function AddShopToTodayScreen() {
   // to.
   useEffect(() => {
     void apiRequest<ExecutiveOption[]>('/assignments')
-      .then(setExecutives)
+      // **Only a RUNNING beat can take an extra shop**, and the server is
+      // the one that says so: `extra-stop.service.ts` refuses a day that
+      // has not started (`BEAT_NOT_STARTED`) or has ended
+      // (`BEAT_DAY_ENDED`) — FR-045. Offering those executives here was
+      // offering a choice that could only end in an error the picker
+      // already had the information to prevent.
+      .then((rows) => setExecutives(rows.filter((r) => r.state === 'RUNNING')))
       .catch((err: unknown) =>
         setError(
           describeFailure(err, "today's beats", false).error ??
@@ -247,8 +253,13 @@ export function AddShopToTodayScreen() {
 
         <Section title="Executive">
           {executives.length === 0 && !loading ? (
+            // Says WHY rather than "nobody has a beat": executives with a
+            // beat today who simply have not started it are filtered out
+            // above, so "no beat today" would often have been untrue and
+            // would have sent the manager looking for the wrong problem.
             <Text style={{ fontSize: 13, color: LABEL }}>
-              No executive has a beat today, so there is nothing to add to.
+              No executive has started a beat today. A shop can only be added
+              to a beat that is running.
             </Text>
           ) : null}
           {executives.map((e) => (
