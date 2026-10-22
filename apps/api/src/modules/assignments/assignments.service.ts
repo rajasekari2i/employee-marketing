@@ -296,8 +296,14 @@ export class AssignmentsService {
 
   /**
    * Why a day has no plan behind it — `NO_BEAT_PLAN` when the executive has
-   * no active plan at all, `NOT_A_WORKING_DAY` when they have one that does
-   * not cover today's weekday (007-extra-shops).
+   * no active plan at all, `NOT_A_WORKING_DAY` when they have one but none
+   * of them covers today's weekday (007-extra-shops).
+   *
+   * **Reads every active plan, not one of them.** An executive routinely has
+   * several — the pilot runs one plan per weekday ("Erode_RKV" Mon,
+   * "Erode_rkv2" Tue, "Karur" Wed+Thu) — so asking a single arbitrary plan
+   * whether it covers today answered a question about the wrong plan. The
+   * same mistake, and its fix, is in {@link ensureTodayRoute}.
    *
    * Only ever called for a row whose `beatPlanId` is null, so it costs one
    * extra read on exactly the days that have no stops to read.
@@ -307,14 +313,18 @@ export class AssignmentsService {
     executiveId: string,
     businessDate: string,
   ): Promise<NoBeatReason> {
-    const plan = await tx.beatPlan.findFirst({
+    const plans = await tx.beatPlan.findMany({
       where: { executiveId, isActive: true },
       select: { workingDays: true },
     });
-    if (!plan) {
+    if (plans.length === 0) {
       return 'NO_BEAT_PLAN';
     }
-    return plan.workingDays.includes(this.clock.weekdayOf(businessDate))
+    const weekday = this.clock.weekdayOf(businessDate);
+    // A plan DOES cover today, yet this row has none: the row predates the
+    // plan being assigned, or predates this method being right. Not a
+    // non-working day, so say `NO_BEAT_PLAN` — the day genuinely has none.
+    return plans.some((plan) => plan.workingDays.includes(weekday))
       ? 'NO_BEAT_PLAN'
       : 'NOT_A_WORKING_DAY';
   }
@@ -338,11 +348,27 @@ export class AssignmentsService {
     businessDate: string,
   ): Promise<TodayResult> {
     const plan = await tx.beatPlan.findFirst({
-      where: { executiveId, isActive: true },
+      // **The plan that covers THIS weekday, chosen in SQL** — not "an
+      // active plan of this executive's", then asked whether it happens to
+      // cover today. An executive has as many plans as they have routes,
+      // and the pilot runs one per weekday, so the old query picked an
+      // arbitrary one and the day came out empty whenever Postgres handed
+      // back a plan for a different day. FR-ASSIGN-01 is explicit about the
+      // intended set: "every active executive **whose beat plan includes
+      // that weekday**".
+      where: {
+        executiveId,
+        isActive: true,
+        workingDays: { has: this.clock.weekdayOf(businessDate) },
+      },
+      // Two plans covering one weekday is a master-data mistake rather than
+      // a supported arrangement, but it must not make the day depend on
+      // Postgres's row order: the oldest wins, every day, until an admin
+      // deactivates one.
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       select: {
         id: true,
         name: true,
-        workingDays: true,
         shops: {
           select: {
             sequence: true,
@@ -375,14 +401,16 @@ export class AssignmentsService {
     // created with a null plan and no stops; the reason is still returned,
     // so the no-beat card's existing copy keeps explaining why the day is
     // empty.
-    const noBeatReason: NoBeatReason | null = !plan
-      ? 'NO_BEAT_PLAN'
-      : plan.workingDays.includes(this.clock.weekdayOf(businessDate))
-        ? null
-        : 'NOT_A_WORKING_DAY';
+    //
+    // `plan` is now null for BOTH cases, so which one it is takes the same
+    // second read `resolveNoBeatReason` already does: has this executive any
+    // active plan at all, or none covering today?
+    const noBeatReason: NoBeatReason | null = plan
+      ? null
+      : await this.resolveNoBeatReason(tx, executiveId, businessDate);
 
     /** Only a day that a plan actually covers starts with stops on it. */
-    const planShops = plan && noBeatReason === null ? plan.shops : [];
+    const planShops = plan ? plan.shops : [];
 
     const settings = await tx.companySettings.findUnique({
       where: { companyId },
@@ -396,10 +424,10 @@ export class AssignmentsService {
           companyId,
           businessDate: this.clock.toDateColumn(businessDate),
           executiveId,
-          beatPlanId: plan && noBeatReason === null ? plan.id : null,
+          beatPlanId: plan?.id ?? null,
           // Snapshot, not a join — renaming the plan later must not rewrite
           // a day that already happened.
-          beatPlanName: plan && noBeatReason === null ? plan.name : null,
+          beatPlanName: plan?.name ?? null,
           stops: {
             create: planShops.map((planShop) => ({
               companyId,
