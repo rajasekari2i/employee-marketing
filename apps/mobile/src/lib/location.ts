@@ -36,24 +36,55 @@ export type LocationResult =
   { ok: true; position: Position } | { ok: false; failure: LocationFailure };
 
 /**
- * Two attempts, in order. The first asks the GPS hardware for a fresh,
- * precise fix; the second accepts whatever the fused provider already knows
- * from Wi-Fi and cell towers.
+ * How long this caller is willing to wait for precision.
  *
- * The second attempt exists because the first routinely fails indoors — a
- * cold GPS lock can take far longer than any reasonable timeout, and an
- * executive standing in a shop is exactly the case this feature has to work
- * in. `maximumAge` is non-zero on both so a fix the phone already has counts:
- * demanding `maximumAge: 0` means "ignore everything you know and re-acquire
- * from scratch", which is what made this fail on a real device.
+ * **`precise`** — the measurement depends on it. A visit's `distanceMeters`
+ * is computed from the position this returns, so a 500 m cell-tower fix
+ * there would manufacture a range exception out of nothing. Worth up to 22
+ * seconds.
  *
- * Accuracy is recorded, never judged (FR-014) — so a coarse fix is a
- * perfectly good answer here, and much better than refusing to start the beat.
+ * **`fast`** — the beat-day commands. `startAccuracyMeters` is *recorded and
+ * never judged* (FR-014, and the server's own comment on the column: "for
+ * the manager's later review; never a reason to reject"), so a coarse fix is
+ * exactly as good an answer as a precise one — and waiting 12 seconds for
+ * GPS to lock indoors buys literally nothing that is ever read.
  */
-const ATTEMPTS = [
-  { enableHighAccuracy: true, timeout: 12_000, maximumAge: 30_000 },
-  { enableHighAccuracy: false, timeout: 10_000, maximumAge: 120_000 },
-] as const;
+export type Precision = 'precise' | 'fast';
+
+interface ReadOptions {
+  enableHighAccuracy: boolean;
+  timeout: number;
+  maximumAge: number;
+}
+
+/**
+ * Attempts in order, per precision. `maximumAge` is non-zero everywhere so a
+ * fix the phone already has counts: demanding `maximumAge: 0` means "ignore
+ * everything you know and re-acquire from scratch", which is what made this
+ * fail on a real device.
+ *
+ * **`precise` tries the GPS hardware first**, then falls back to whatever the
+ * fused provider knows from Wi-Fi and cell towers — because the first
+ * routinely fails indoors, and a coarse fix still beats refusing to record
+ * the visit.
+ *
+ * **`fast` inverts that order**, and the inversion is the whole point: the
+ * cheap read is tried first and the expensive one only if it finds nothing.
+ * Android almost always has a last-known location, so in practice this
+ * returns in well under a second instead of the 12 s the GPS attempt spends
+ * failing. Its worst case is 12 s rather than 22 s, and it only reaches that
+ * on a phone that has no idea where it is at all.
+ */
+const ATTEMPTS: Record<Precision, readonly ReadOptions[]> = {
+  precise: [
+    { enableHighAccuracy: true, timeout: 12_000, maximumAge: 30_000 },
+    { enableHighAccuracy: false, timeout: 10_000, maximumAge: 120_000 },
+  ],
+  fast: [
+    { enableHighAccuracy: false, timeout: 4_000, maximumAge: 120_000 },
+    { enableHighAccuracy: true, timeout: 8_000, maximumAge: 30_000 },
+  ],
+};
 
 /** Android's `PositionError` codes, which the platform sends back as numbers. */
 const POSITION_ERROR = {
@@ -99,7 +130,7 @@ function configureOnce(): void {
 
 /** One attempt at a fix. Resolves either a position or the platform's own error. */
 function readOnce(
-  options: (typeof ATTEMPTS)[number],
+  options: ReadOptions,
 ): Promise<
   | { ok: true; position: Position }
   | { ok: false; code: number; message: string }
@@ -156,20 +187,50 @@ function readOnce(
  * them easily — a double tap on Submit, or Submit pressed while the pin
  * screen is still acquiring. Sharing the in-flight promise means a second
  * caller waits for the first result instead of starting a parallel read.
+ *
+ * Two precisions make that a queue rather than a single slot. Callers
+ * wanting the SAME precision still share one read; a caller wanting the
+ * other one waits its turn and then reads for itself, because sharing
+ * across precisions would silently answer the wrong question — a `fast`
+ * read's coarse fix is not an acceptable basis for a visit's distance.
+ * Either way, never two reads at once.
  */
-let inFlight: Promise<LocationResult> | null = null;
+let inFlight: { precision: Precision; read: Promise<LocationResult> } | null =
+  null;
 
-export function getCurrentPosition(): Promise<LocationResult> {
-  if (inFlight) {
-    return inFlight;
+export function getCurrentPosition(
+  precision: Precision = 'precise',
+): Promise<LocationResult> {
+  // The same read is already running — join it. This is the double-tap case
+  // the guard was written for.
+  if (inFlight?.precision === precision) {
+    return inFlight.read;
   }
-  inFlight = readPositionWithFallback().finally(() => {
-    inFlight = null;
+
+  // A read of the OTHER precision is running. Joining it would hand back the
+  // wrong answer — a `fast` read's coarse fix must never become the position
+  // a visit's distance is measured against — but starting a second read now
+  // is the overlap that crashed the app natively. So queue: wait for the
+  // current one to settle, then take our turn.
+  const previous = inFlight?.read ?? null;
+  const read = (previous ? previous.catch(() => undefined) : Promise.resolve())
+    .then(() => readPositionWithFallback(precision));
+
+  const entry = { precision, read };
+  inFlight = entry;
+  void read.finally(() => {
+    // Only clear if nobody has queued behind us; otherwise the queue's tail
+    // is theirs, not ours.
+    if (inFlight === entry) {
+      inFlight = null;
+    }
   });
-  return inFlight;
+  return read;
 }
 
-async function readPositionWithFallback(): Promise<LocationResult> {
+async function readPositionWithFallback(
+  precision: Precision,
+): Promise<LocationResult> {
   configureOnce();
 
   const permission = await ensureLocationPermission();
@@ -183,7 +244,7 @@ async function readPositionWithFallback(): Promise<LocationResult> {
 
   let lastCode: number = POSITION_ERROR.POSITION_UNAVAILABLE;
 
-  for (const options of ATTEMPTS) {
+  for (const options of ATTEMPTS[precision]) {
     const attempt = await readOnce(options);
     if (attempt.ok) {
       return { ok: true, position: attempt.position };
