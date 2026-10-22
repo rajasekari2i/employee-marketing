@@ -110,6 +110,55 @@ export class CompanyClock {
     return this.toIsoDate(date);
   }
 
+  /**
+   * The calendar month before the one a business date falls in, as
+   * `{year, month}` with `month` 1-12.
+   *
+   * 012-monthly-salary-run. A salary run addresses a MONTH rather than a date
+   * range, so this returns the two numbers the run is keyed by rather than a
+   * pair of dates — the boundaries are then `startOfMonth`/`endOfMonth` of any
+   * day inside it.
+   *
+   * The arithmetic lives HERE and nowhere else (Constitution rule 8). A salary
+   * service resolving its own month boundaries would be the second place that
+   * knows what a month is, which is what {@link startOfWeek}'s own comment
+   * already argues against.
+   */
+  previousMonth(businessDate: string): { year: number; month: number } {
+    const previousMonthDay = this.shiftDays(
+      this.startOfMonth(businessDate),
+      -1,
+    );
+    const [year, month] = previousMonthDay.split('-').map(Number);
+    return { year, month };
+  }
+
+  /** The first day of a `{year, month}` period, as `YYYY-MM-DD`. */
+  periodStart(year: number, month: number): string {
+    return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-01`;
+  }
+
+  /** The last day of a `{year, month}` period, as `YYYY-MM-DD`. */
+  periodEnd(year: number, month: number): string {
+    return this.endOfMonth(this.periodStart(year, month));
+  }
+
+  /**
+   * Whether a period has finished, in the company's own reckoning.
+   *
+   * **A month is complete only once it is entirely in the past** — the
+   * current month is not, which is what FR-031 refuses. Comparing the
+   * period's last day against today is enough and needs no clock arithmetic
+   * beyond what is already here.
+   */
+  isPeriodComplete(
+    year: number,
+    month: number,
+    todayBusinessDate: string,
+  ): boolean {
+    return this.periodEnd(year, month) < todayBusinessDate;
+  }
+
   private toIsoDate(value: Date): string {
     return value.toISOString().slice(0, 10);
   }

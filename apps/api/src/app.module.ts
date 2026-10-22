@@ -29,6 +29,7 @@ import { MastersModule } from './modules/masters/masters.module';
 import { AssignmentsModule } from './modules/assignments/assignments.module';
 import { VisitsModule } from './modules/visits/visits.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { SalaryModule } from './modules/salary/salary.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 
 @Module({
@@ -70,6 +71,7 @@ import { AttendanceModule } from './modules/attendance/attendance.module';
     AssignmentsModule,
     VisitsModule,
     ReportsModule,
+    SalaryModule,
     AttendanceModule,
     // Establishes one AsyncLocalStorage-backed context per request so the
     // tenant isolation layer (Architecture §5 / CLAUDE.md Constitution

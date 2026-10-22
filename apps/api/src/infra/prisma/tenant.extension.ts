@@ -81,6 +81,16 @@ export const TENANT_MODELS = new Set<string>([
   // NO second, per-user scope — a manager records it for every member of
   // staff in the company (FR-050) — so company scope is the whole of it.
   'Attendance',
+  // 012-monthly-salary-run: both new tables are tenant tables and both get
+  // both layers in the migration pair that creates them
+  // (20261023090018_rls_salary_runs), alongside their real writer,
+  // SalaryRunService. `SalaryRunLine` is registered in its OWN right rather
+  // than relying on the cascade from its parent run: RLS is not transitive,
+  // and neither is this extension — a child reached by a direct query would
+  // otherwise be unscoped. Like attendance, neither has a second per-user
+  // scope, because a salary run spans every member of staff in the company.
+  'SalaryRun',
+  'SalaryRunLine',
 ]);
 
 /** Operations whose `where` clause must be narrowed to the tenant. */

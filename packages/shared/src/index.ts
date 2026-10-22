@@ -154,3 +154,15 @@ export type {
 
 export { previousDayQuerySchema } from './reports.schema';
 export type { PreviousDayQuery } from './reports.schema';
+
+// 012-monthly-salary-run
+export {
+  salaryRunQuerySchema,
+  generateSalaryRunSchema,
+  finaliseSalaryRunSchema,
+} from './salary.schema';
+export type {
+  SalaryRunQuery,
+  GenerateSalaryRunInput,
+  FinaliseSalaryRunInput,
+} from './salary.schema';

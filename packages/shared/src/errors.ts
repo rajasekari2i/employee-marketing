@@ -78,6 +78,16 @@ export const ERROR_CODES = [
   'ORDER_ALREADY_DELIVERED',
   'ATTENDANCE_DATE_IN_FUTURE',
   'ATTENDANCE_VERSION_CONFLICT',
+  // 012-monthly-salary-run, contracts/salary.md. All three are state-machine
+  // refusals, the same shape as ORDER_ALREADY_DELIVERED above.
+  // SALARY_NO_ATTENDANCE is deliberately a refusal and not a run totalling
+  // zero: a zero total reads as a computed answer, and "nobody recorded any
+  // attendance" is a different statement from "nobody earned anything".
+  // SALARY_RUN_ALREADY_FINALISED is what arbitrates two admins finalising
+  // at once — the first finaliser's attribution must never be overwritten.
+  'SALARY_PERIOD_NOT_COMPLETE',
+  'SALARY_NO_ATTENDANCE',
+  'SALARY_RUN_ALREADY_FINALISED',
   'IDEMPOTENCY_KEY_REUSED',
   'OTP_INCORRECT',
   'OTP_EXPIRED',
@@ -124,6 +134,9 @@ export const ERROR_STATUS: Readonly<Record<ErrorCode, number>> = {
   ORDER_ALREADY_DELIVERED: 409,
   ATTENDANCE_DATE_IN_FUTURE: 409,
   ATTENDANCE_VERSION_CONFLICT: 409,
+  SALARY_PERIOD_NOT_COMPLETE: 409,
+  SALARY_NO_ATTENDANCE: 409,
+  SALARY_RUN_ALREADY_FINALISED: 409,
   OTP_INCORRECT: 400,
   OTP_EXPIRED: 410,
   OTP_ATTEMPTS_EXHAUSTED: 429,
@@ -160,6 +173,9 @@ export const ERROR_TITLES: Readonly<Record<ErrorCode, string>> = {
   ORDER_ALREADY_DELIVERED: 'Order already delivered',
   ATTENDANCE_DATE_IN_FUTURE: 'Cannot record attendance for a future date',
   ATTENDANCE_VERSION_CONFLICT: 'This attendance record changed',
+  SALARY_PERIOD_NOT_COMPLETE: 'Salary period is not complete',
+  SALARY_NO_ATTENDANCE: 'No attendance recorded for this period',
+  SALARY_RUN_ALREADY_FINALISED: 'Salary run already finalised',
   OTP_INCORRECT: 'Incorrect OTP',
   OTP_EXPIRED: 'OTP expired',
   OTP_ATTEMPTS_EXHAUSTED: 'OTP attempts exhausted',

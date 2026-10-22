@@ -234,8 +234,9 @@ export function getCurrentPosition(
   // is the overlap that crashed the app natively. So queue: wait for the
   // current one to settle, then take our turn.
   const previous = inFlight?.read ?? null;
-  const read = (previous ? previous.catch(() => undefined) : Promise.resolve())
-    .then(() => readPositionWithFallback(precision));
+  const read = (
+    previous ? previous.catch(() => undefined) : Promise.resolve()
+  ).then(() => readPositionWithFallback(precision));
 
   const entry = { precision, read };
   inFlight = entry;

@@ -258,8 +258,8 @@ export function AddShopToTodayScreen() {
             // above, so "no beat today" would often have been untrue and
             // would have sent the manager looking for the wrong problem.
             <Text style={{ fontSize: 13, color: LABEL }}>
-              No executive has started a beat today. A shop can only be added
-              to a beat that is running.
+              No executive has started a beat today. A shop can only be added to
+              a beat that is running.
             </Text>
           ) : null}
           {executives.map((e) => (
