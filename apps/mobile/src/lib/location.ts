@@ -48,8 +48,16 @@ export type LocationResult =
  * the manager's later review; never a reason to reject"), so a coarse fix is
  * exactly as good an answer as a precise one — and waiting 12 seconds for
  * GPS to lock indoors buys literally nothing that is ever read.
+ *
+ * **`fresh`** — capturing a shop pin, the one place in the product where
+ * accuracy *blocks* instead of flagging (`shop-pin.service.ts`: "a bad pin
+ * becomes the fixed point every future visit at this shop is measured
+ * against"). Here a cached fix is not a shortcut, it is the bug: the screen's
+ * Retry GPS button could hand back the very same stale coarse reading that
+ * just failed the gate, so retrying changed nothing and there was no way
+ * forward. This mode refuses cached readings outright.
  */
-export type Precision = 'precise' | 'fast';
+export type Precision = 'precise' | 'fast' | 'fresh';
 
 interface ReadOptions {
   enableHighAccuracy: boolean;
@@ -84,6 +92,19 @@ const ATTEMPTS: Record<Precision, readonly ReadOptions[]> = {
     { enableHighAccuracy: false, timeout: 4_000, maximumAge: 120_000 },
     { enableHighAccuracy: true, timeout: 8_000, maximumAge: 30_000 },
   ],
+  // `maximumAge: 0` — the one mode that genuinely needs it, and the reason
+  // the general warning against it does not apply: everywhere else a cached
+  // fix is a usable answer, so refusing it only wasted time. Here the server
+  // rejects anything coarser than the company's limit, so a cached coarse
+  // reading cannot be saved no matter how quickly it arrives — and returning
+  // it makes Retry GPS a button that does nothing.
+  //
+  // **One attempt, and no coarse fallback.** A Wi-Fi/cell fix is tens to
+  // hundreds of metres; the gate is 20 m by default. Falling back to one
+  // would only reach an unsaveable number faster. Timing out and saying so
+  // is the honest answer, and the screen already tells the executive to step
+  // outside and retry — which, now, actually re-reads.
+  fresh: [{ enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 }],
 };
 
 /** Android's `PositionError` codes, which the platform sends back as numbers. */
@@ -274,11 +295,29 @@ async function readPositionWithFallback(
   };
 }
 
-/** User-facing copy per failure, in the product's plain-language register (PRD §5). */
-export function locationFailureMessage(failure: LocationFailure): string {
+/**
+ * User-facing copy per failure, in the product's plain-language register
+ * (PRD §5).
+ *
+ * `retryLabel` names the button the reader is actually looking at. It was
+ * hardwired to "Start beat", which was already wrong on the End beat
+ * command, on the pin screen and on the create-shop screen, and only stayed
+ * invisible because those paths rarely failed. The `fresh` mode above makes
+ * the pin screen's timeout a normal, expected outcome, so the wrong button
+ * name would now be read often.
+ *
+ * Omit it where the screen has no retry button — the copy then says "try
+ * again" rather than sending the reader to look for a control that is not
+ * on their screen.
+ */
+export function locationFailureMessage(
+  failure: LocationFailure,
+  retryLabel?: string,
+): string {
+  const retry = retryLabel ? `tap ${retryLabel} again` : 'try again';
   switch (failure) {
     case 'PERMISSION_DENIED':
-      return 'Location permission is needed to start the beat. Tap Start beat again to allow it.';
+      return `Location permission is needed. Allow it, then ${retry}.`;
     case 'PERMISSION_BLOCKED':
       return 'Location permission is turned off for this app. Enable it in Settings, then try again.';
     case 'TIMED_OUT':
@@ -286,7 +325,7 @@ export function locationFailureMessage(failure: LocationFailure): string {
       // IS allowed, the phone just has not got a fix yet. Telling someone to
       // check a setting that is already correct sends them hunting for a
       // problem that is not there.
-      return 'Still looking for your location. Move near a window or outside, then tap Start beat again.';
+      return `Still looking for your location. Move near a window or outside, then ${retry}.`;
     case 'POSITION_UNAVAILABLE':
       return 'Could not get your location. Check that location is switched on, then try again.';
   }

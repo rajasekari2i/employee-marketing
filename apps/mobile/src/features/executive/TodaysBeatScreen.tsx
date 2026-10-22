@@ -262,7 +262,14 @@ export function TodaysBeatScreen() {
     // the fix is what `distanceMeters` is computed from.
     const fix = await getCurrentPosition('fast');
     if (!fix.ok) {
-      setError(locationFailureMessage(fix.failure));
+      // This handler serves both commands, so name the button the executive
+      // is actually looking at rather than always saying "Start beat".
+      setError(
+        locationFailureMessage(
+          fix.failure,
+          path === 'start' ? 'Start beat' : 'End beat',
+        ),
+      );
       setBusy(false);
       return;
     }
