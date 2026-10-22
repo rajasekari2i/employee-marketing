@@ -255,7 +255,12 @@ export function TodaysBeatScreen() {
       return;
     }
     setBusy(true);
-    const fix = await getCurrentPosition();
+    // `fast`, not the default `precise`: start/end accuracy is recorded for
+    // the manager and never judged, so the 12-second GPS attempt the precise
+    // path leads with was buying nothing and was the whole reason Start beat
+    // took 20 seconds. A visit submission still asks for `precise` — there
+    // the fix is what `distanceMeters` is computed from.
+    const fix = await getCurrentPosition('fast');
     if (!fix.ok) {
       setError(locationFailureMessage(fix.failure));
       setBusy(false);
