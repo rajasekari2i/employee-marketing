@@ -78,6 +78,12 @@ interface BeatPlansListResponse {
 }
 
 /** 004-brands-reasons-crud: `/brands` and `/reasons` share one shape and, unlike the three above, carry no `nextCursor` — both are deliberately unpaginated (contracts/masters.md). */
+/** 012-monthly-salary-run: only the fields the tile's subtitle needs. */
+interface SalaryRunSummaryResponse {
+  period: { label: string };
+  run: { status: 'DRAFT' | 'FINALISED'; version: number } | null;
+}
+
 interface MastersListResponse {
   items: Array<{ id: string }>;
 }
@@ -176,6 +182,14 @@ export function HomeScreen() {
     brands: number;
     reasons: number;
   } | null>(null);
+  // 012-monthly-salary-run. The period comes from the SERVER — asking the
+  // device which month is "last month" would make the tile disagree with
+  // the screen it opens whenever a timezone boundary is near (FR-002).
+  const [salarySummary, setSalarySummary] = useState<{
+    label: string;
+    status: 'DRAFT' | 'FINALISED' | null;
+    version: number | null;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -272,6 +286,23 @@ export function HomeScreen() {
         // Leave masterCounts null — the tile falls back to a neutral subtitle.
       });
 
+    // 012-monthly-salary-run: the previous month and whether it has been run
+    // yet. One request, same shape as the siblings above.
+    void apiRequest<SalaryRunSummaryResponse>('/salary-runs')
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+        setSalarySummary({
+          label: result.period.label,
+          status: result.run?.status ?? null,
+          version: result.run?.version ?? null,
+        });
+      })
+      .catch(() => {
+        // Leave salarySummary null — the tile falls back to a neutral subtitle.
+      });
+
     return () => {
       cancelled = true;
     };
@@ -328,6 +359,12 @@ export function HomeScreen() {
   const mastersSubtitle = masterCounts
     ? `${masterCounts.brands} brands · ${masterCounts.reasons} reasons`
     : 'View all';
+
+  const salarySubtitle = salarySummary
+    ? salarySummary.status === null
+      ? `${salarySummary.label} · not run yet`
+      : `${salarySummary.label} · ${salarySummary.status === 'FINALISED' ? 'Finalised' : 'Draft'} v${salarySummary.version}`
+    : 'View run';
 
   return (
     <View style={{ flex: 1, backgroundColor: BG }}>
@@ -434,7 +471,7 @@ export function HomeScreen() {
           <Tile
             icon={ICON_SALARY}
             onPress={() => navigation.navigate('SalaryRun')}
-            subtitle="Coming soon"
+            subtitle={salarySubtitle}
             title="Salary"
           />
           <Tile
