@@ -245,6 +245,18 @@ export function SalaryRunScreen() {
 
   const isFinalised = run?.status === 'FINALISED';
 
+  /**
+   * Whether the footer is carrying three controls instead of the board's two.
+   *
+   * Board 4.13 draws CSV and the primary action as equal halves, and that is
+   * what ships whenever there are only two. Adding the re-run button made
+   * three share 350dp, which left the primary ~139dp — not enough for
+   * "Finalize September…" at 15px/700, so it wrapped to two lines and lost
+   * its centring. In the three-control state CSV therefore takes only the
+   * width its own label needs and the primary keeps the rest.
+   */
+  const hasRerun = run !== null && !isFinalised;
+
   return (
     <View style={{ flex: 1, backgroundColor: BG }}>
       {/* Header — board 4.13: 52px top padding, 44px back tile, 13px
@@ -521,7 +533,7 @@ export function SalaryRunScreen() {
             Alert.alert('CSV export', 'CSV export is coming in a later update.')
           }
           style={{
-            flex: 1,
+            ...(hasRerun ? { paddingHorizontal: 18 } : { flex: 1 }),
             height: 52,
             borderRadius: 14,
             borderWidth: 1.5,
@@ -607,10 +619,26 @@ export function SalaryRunScreen() {
             backgroundColor: BLUE,
             alignItems: 'center',
             justifyContent: 'center',
+            paddingHorizontal: 8,
             opacity: busy ? 0.6 : 1,
           }}
         >
-          <Text style={{ fontSize: 15, fontWeight: '700', color: '#FFFFFF' }}>
+          {/*
+            `numberOfLines` and `textAlign` together, not either alone: a
+            wrapped label here was ALSO left-aligned, because the wrap
+            happens inside the Text and the parent's `alignItems` centres
+            the box rather than the lines within it. Both are needed for
+            the label to stay one centred line at every footer width.
+          */}
+          <Text
+            numberOfLines={1}
+            style={{
+              fontSize: 15,
+              fontWeight: '700',
+              color: '#FFFFFF',
+              textAlign: 'center',
+            }}
+          >
             {busy
               ? 'Working…'
               : !run
