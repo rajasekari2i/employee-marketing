@@ -93,6 +93,57 @@ export class PayslipService {
   }
 
   /**
+   * The download's filename, e.g. `payslip-krishna-2026-09.pdf`.
+   *
+   * **Sanitising the name is a security concern here, not a cosmetic one.**
+   * `employeeName` is admin-entered free text and it is about to go into an
+   * HTTP *header*: a name carrying a double quote would end the quoted
+   * string early, and one carrying CR/LF could inject a header outright.
+   * Only `[a-z0-9-]` survives, so neither is representable.
+   */
+  fileName(detail: SalaryLineDetailView): string {
+    const period = `${detail.period.year}-${String(detail.period.month).padStart(2, '0')}`;
+    const slug = detail.employeeName
+      .normalize('NFKD')
+      // Strip combining marks, so "José" slugs to "jose" rather than "jos".
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40)
+      .replace(/-+$/, '');
+
+    // A name written wholly in a non-Latin script slugs to nothing. Fall
+    // back to the period alone rather than emitting `payslip--2026-09.pdf`;
+    // `filename*` below still carries the real name for clients that read it.
+    return slug ? `payslip-${slug}-${period}.pdf` : `payslip-${period}.pdf`;
+  }
+
+  /**
+   * The full `Content-Disposition` value.
+   *
+   * Two filenames on purpose (RFC 6266): the quoted `filename=` is the
+   * ASCII slug every client understands, and `filename*=UTF-8''…` carries
+   * the employee's name as actually written — which matters for a Tamil or
+   * Devanagari name that the slug cannot represent at all. Clients that
+   * understand the second prefer it; the rest fall back to the first.
+   *
+   * Percent-encoding makes the header injection-proof a second time over.
+   */
+  contentDisposition(detail: SalaryLineDetailView): string {
+    const period = `${detail.period.year}-${String(detail.period.month).padStart(2, '0')}`;
+    const full = `payslip-${detail.employeeName}-${period}.pdf`;
+    const encoded = encodeURIComponent(full)
+      // encodeURIComponent leaves these, and RFC 5987's attr-char does not
+      // allow them.
+      .replace(
+        /['()!*]/g,
+        (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+      );
+    return `attachment; filename="${this.fileName(detail)}"; filename*=UTF-8''${encoded}`;
+  }
+
+  /**
    * Renders the payslip.
    *
    * **Carries exactly what the detail screen shows and no figure that is not
