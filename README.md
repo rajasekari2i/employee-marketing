@@ -217,7 +217,9 @@ adb reverse tcp:8081 tcp:8081      # Metro
 adb reverse --list                 # verify
 ```
 
-On the phone `localhost` means *the phone*. `react-native run-android` recreates the 8081 tunnel automatically but **nothing recreates 3000** — and the app reports a lost tunnel as *"No internet connection"*, because a failed `fetch` cannot tell the two apart. Re-run after every unplug, device reboot or `adb kill-server`.
+On the phone `localhost` means *the phone*, so both ports need forwarding: **8081** is Metro (the JS bundle — without it the app shows a red "Unable to load script" and never starts) and **3000** is the API (without it the app runs but reports *"No internet connection"*, because a failed `fetch` cannot tell "no signal" from "nothing listening").
+
+`react-native run-android` recreates the 8081 tunnel automatically; **nothing recreates 3000**. Both die on every unplug, device reboot or `adb kill-server`, so re-run them and verify with `adb reverse --list` — bare `adb reverse` is not a list command. See Troubleshooting if either symptom persists.
 
 ### Other commands
 
@@ -344,9 +346,59 @@ For a suspected vulnerability, contact the repository owner directly rather than
 
 ## Troubleshooting
 
+### Two tunnels, two different failures
+
+Most device problems are one of these, and they are easy to mix up because the fix *looks* the same:
+
+| Port | Serves | Symptom when it is down |
+|---|---|---|
+| **8081** | Metro — the JavaScript bundle | **Red screen, "Unable to load script".** The app cannot start at all |
+| **3000** | The API — data | The app runs, but says *"No internet connection"* |
+
+Running the 3000 command will never fix an 8081 problem, or the reverse. Read the symptom first, then pick.
+
+### Red screen: "Unable to load script"
+
+The app cannot reach **Metro**. In likelihood order:
+
+**1. Metro is not running.** This is the usual cause. `adb reverse` only forwards a port — if nothing is listening on 8081 on your machine, the tunnel leads nowhere and the error is identical to having no tunnel.
+
+```bash
+curl -s localhost:8081/status      # expect: packager-status:running
+pnpm --filter mobile start         # if it is not
+```
+
+**2. The device is not attached or not authorised.** `adb devices` must show `device` — not `unauthorized`, not `offline`.
+
+**3. The tunnel did not survive.** `adb reverse --list` must print both lines:
+
+```bash
+adb reverse tcp:8081 tcp:8081
+adb reverse tcp:3000 tcp:3000
+adb reverse --list
+```
+
+Note that bare `adb reverse` is **not** a list command — it only prints usage, so it is possible to think you checked when you did not.
+
+**4. More than one device is attached.** `adb reverse` then fails; name the one you mean with `adb -s <serial> reverse tcp:8081 tcp:8081`.
+
+**5. Then reload on the phone — press `R` twice**, or Dismiss and reopen. **The red screen never retries by itself**, so a fixed tunnel still shows the old error until you reload. This is why the fix often looks like it did not work.
+
+Still failing:
+
+```bash
+adb kill-server && adb start-server          # then replug, redo the reverses
+pnpm --filter mobile start --reset-cache     # stale Metro cache
+pnpm --filter mobile android                 # last resort: reinstall
+```
+
 ### "No internet connection" on the device, but the network is fine
 
-`adb reverse --list` is almost certainly empty. The app's `fetch` cannot distinguish "no signal" from "nothing is listening at that address", so a dropped tunnel is reported as a connectivity problem. Re-run both `adb reverse` commands. The payslip PDF opens through the same tunnel in the system browser, so check this before suspecting the code.
+`adb reverse --list` is almost certainly missing the **3000** line. The app's `fetch` cannot distinguish "no signal" from "nothing is listening at that address", so a dropped tunnel is reported as a connectivity problem.
+
+The asymmetry that causes this repeatedly: `react-native run-android` recreates the **8081** tunnel automatically, but **nothing ever recreates 3000**. So the state right after a reinstall is usually "app loads fine, no data" — Metro is up because the CLI restored it, and the API is unreachable because nobody restored that one. Run both commands, every time, not just the one the error names.
+
+The payslip PDF opens in the system browser through this same tunnel, so check it before suspecting the code.
 
 ### `prisma migrate dev` fails with **P3014**
 
