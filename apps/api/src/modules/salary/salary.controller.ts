@@ -184,9 +184,11 @@ export class SalaryController {
     const pdf = await this.payslipService.render(detail, companyName);
 
     response.setHeader('Content-Type', 'application/pdf');
+    // Built by the payslip service, which sanitises the employee's name —
+    // it is admin-entered free text going into a header. See its doc.
     response.setHeader(
       'Content-Disposition',
-      `attachment; filename="payslip-${detail.period.year}-${String(detail.period.month).padStart(2, '0')}.pdf"`,
+      this.payslipService.contentDisposition(detail),
     );
     response.send(pdf);
   }
