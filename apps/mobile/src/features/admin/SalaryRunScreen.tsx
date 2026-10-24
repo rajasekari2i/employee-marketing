@@ -50,6 +50,13 @@ const ICON_LOCK: IconShape[] = [
   { d: 'M8 11V8a4 4 0 0 1 8 0v3' },
 ];
 const ICON_CSV: IconShape[] = [{ d: 'M12 3v12M7 10l5 5 5-5M4 21h16' }];
+// Re-run. A circular arrow: the same "do it again" gesture the rest of the
+// app uses for pull-to-refresh, drawn as an explicit control because a
+// salary run is a command rather than a read.
+const ICON_RERUN: IconShape[] = [
+  { d: 'M20 11a8 8 0 1 0-2.3 5.7' },
+  { d: 'M20 5v6h-6' },
+];
 
 interface BreakdownEntry {
   from: string;
@@ -273,9 +280,12 @@ export function SalaryRunScreen() {
             strokeWidth={2}
           />
         </Pressable>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, flexShrink: 1 }}>
           <Text style={{ fontSize: 13, color: MUTED }}>Salary run</Text>
-          <Text style={{ fontSize: 22, fontWeight: '700', color: INK }}>
+          <Text
+            numberOfLines={1}
+            style={{ fontSize: 22, fontWeight: '700', color: INK }}
+          >
             {periodLabel || 'Salary run'}
           </Text>
         </View>
@@ -533,6 +543,54 @@ export function SalaryRunScreen() {
             CSV
           </Text>
         </Pressable>
+
+        {/*
+          Re-run, and ONLY while the run is a draft.
+
+          A draft is working material: its figures can still be wrong for
+          reasons outside this screen — a rate that was never set, a day
+          sheet filled in after the run — and without this the only way
+          forward from a bad draft was to FINALISE it, which is the one
+          action that cannot be undone.
+
+          It disappears the moment the month is finalised, deliberately. A
+          locked month is not refreshable, and a control that looks like a
+          refresh must never be the thing that quietly creates a new
+          version — that stays an explicit, labelled button (FR-030).
+
+          In the footer rather than the header because every other run-level
+          command is here, and because board 4.13's header is already full
+          at 390px: a third control there would ellipsize "September 2026".
+        */}
+        {run && !isFinalised ? (
+          <Pressable
+            accessibilityLabel={`Re-run ${monthName}`}
+            disabled={busy}
+            onPress={() => void generate()}
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: 14,
+              borderWidth: 1.5,
+              borderColor: CARD_INK,
+              backgroundColor: '#FFFFFF',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: busy ? 0.5 : 1,
+            }}
+          >
+            {busy ? (
+              <ActivityIndicator color={CARD_INK} size="small" />
+            ) : (
+              <OutlineIcon
+                color={CARD_INK}
+                shapes={ICON_RERUN}
+                size={20}
+                strokeWidth={1.8}
+              />
+            )}
+          </Pressable>
+        ) : null}
 
         <Pressable
           accessibilityLabel={
