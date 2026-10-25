@@ -1,0 +1,33 @@
+# Keep the build context small and, more importantly, keep host-built
+# artefacts out of the image: a node_modules built on the host would shadow
+# the one pnpm installs inside the container, and its Prisma engine is
+# compiled for the host's platform.
+node_modules
+**/node_modules
+dist
+**/dist
+.turbo
+**/.turbo
+
+# Secrets must never enter the image. Railway supplies them as environment
+# variables at runtime.
+.env
+**/.env
+**/.env.*
+!**/.env.example
+
+# Nothing the API needs at runtime.
+#
+# apps/mobile is NOT excluded: pnpm-lock.yaml lists it as a workspace
+# importer, so `--frozen-lockfile` fails if its package.json is missing.
+# Its bulky native folders are excluded instead.
+.git
+.github
+apps/mobile/android
+apps/mobile/ios
+apps/mobile/src
+docs
+specs
+.specify
+.claude
+*.log
