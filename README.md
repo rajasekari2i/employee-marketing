@@ -142,8 +142,13 @@ The runtime role must be **non-superuser and not the table owner** — RLS is by
 cp apps/api/.env.example apps/api/.env       # then fill in real values
 cp apps/mobile/.env.example apps/mobile/.env.dev
 
-DATABASE_URL="$MIGRATE_DATABASE_URL" pnpm --filter api exec prisma migrate deploy
-pnpm --filter api exec prisma db seed
+# Migrations need CREATE privileges that app_user does not have, so the
+# privileged URL is passed inline for this one command — it is deliberately
+# not stored as a second variable.
+cd apps/api
+DATABASE_URL="postgresql://postgres:<pwd>@localhost:5432/field_sales" pnpm exec prisma migrate deploy
+DATABASE_URL="postgresql://postgres:<pwd>@localhost:5432/field_sales" pnpm exec prisma db seed
+cd ../..
 pnpm --filter @field-sales/shared build
 ```
 
@@ -157,8 +162,7 @@ pnpm --filter @field-sales/shared build
 
 | Variable | Purpose |
 |---|---|
-| `DATABASE_URL` | **Runtime** connection as `app_user`. Must not be a superuser or the table owner, or RLS is silently bypassed. |
-| `MIGRATE_DATABASE_URL` | **DDL** connection. Prisma reads only `DATABASE_URL`, so substitute this when migrating (below). |
+| `DATABASE_URL` | **The only database variable the app needs.** Connects as `app_user`. Must not be a superuser or the table owner, or RLS is silently bypassed. |
 | `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | Distinct, 32+ characters each |
 | `JWT_ACCESS_TTL` / `JWT_REFRESH_TTL` | `15m` / `60d` |
 | `FILE_URL_SECRET` | HMAC for signed file and payslip URLs |
@@ -305,7 +309,7 @@ LOG_LEVEL=info
 
 Those nine are exactly what `packages/shared/src/env.ts` validates. The process refuses to boot on a missing or too-short one and names it in the error, so a bad deploy fails loudly at startup rather than at the first request.
 
-`MIGRATE_DATABASE_URL` is **not** needed here. It is not in the schema and Prisma never reads it; it exists only so you can substitute it locally.
+`DATABASE_URL` is the **only** database variable — on Railway and locally alike. The privileged connection is never stored anywhere; it is pasted inline for `prisma migrate deploy` and nowhere else. That is deliberate: a superuser URL sitting beside the app's own is one copy-paste away from becoming the app's connection, and that failure is silent.
 
 `PORT` is injected by Railway.
 
@@ -523,10 +527,11 @@ The start command is probably `node dist/main`. The compiled entry is **`dist/sr
 The database role lacks `CREATEDB`, so Prisma cannot build its shadow database. **Migrations in this repo are hand-written** in Prisma's generated style and applied with `migrate deploy`, which needs no shadow database:
 
 ```bash
-DATABASE_URL="$MIGRATE_DATABASE_URL" pnpm --filter api exec prisma migrate deploy
+cd apps/api
+DATABASE_URL="postgresql://postgres:<pwd>@localhost:5432/field_sales" pnpm exec prisma migrate deploy
 ```
 
-Note the substitution: Prisma only ever reads `DATABASE_URL`.
+Prisma only ever reads `DATABASE_URL`, which is why the privileged connection is passed inline for this command rather than kept as a second variable.
 
 ### A query returns nothing, or a `404` on a row that plainly exists
 

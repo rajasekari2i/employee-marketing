@@ -36,11 +36,18 @@
  * environment at invocation time — there is no separate "seed connection"
  * concept in Prisma. Run this with:
  *
- *   DATABASE_URL="$MIGRATE_DATABASE_URL" pnpm --filter api exec prisma db seed
+ *   cd apps/api
+ *   DATABASE_URL="postgresql://postgres:<pwd>@localhost:5432/field_sales" \
+ *     pnpm exec prisma db seed
  *
  * NOT a bare `pnpm --filter api exec prisma db seed` (which would
  * silently use `.env`'s default `DATABASE_URL`, i.e. `app_user`, and hit
  * exactly the problem above).
+ *
+ * The privileged URL is passed inline rather than stored as a second env
+ * var: a superuser connection sitting in the app's own environment is one
+ * copy-paste away from becoming the app's connection, and that failure is
+ * silent — RLS simply stops applying.
  */
 import { PrismaClient } from '@prisma/client';
 import { loadEnv } from '@field-sales/shared';
@@ -143,10 +150,10 @@ async function main(): Promise<void> {
   if (/\bapp_user\b/.test(process.env.DATABASE_URL ?? '')) {
     console.warn(
       '[seed] WARNING: DATABASE_URL looks like the app_user (RLS-enforced, ' +
-        'non-superuser) connection. This script must run against ' +
-        'MIGRATE_DATABASE_URL instead — see the comment at the top of this ' +
-        'file. Proceeding anyway, but this will likely fail or silently ' +
-        'duplicate rows.',
+        'non-superuser) connection. This script must run against the ' +
+        'privileged (superuser) connection instead, passed inline — see ' +
+        'the comment at the top of this file. Proceeding anyway, but this ' +
+        'will likely fail or silently duplicate rows.',
     );
   }
 
