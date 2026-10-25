@@ -11,7 +11,7 @@ import { PrismaClient, type FileObject } from '@prisma/client';
 import { AppError, loadEnv } from '@field-sales/shared';
 import sharp from 'sharp';
 
-import { LocalVolumeAdapter } from '../../infra/storage/local-volume.adapter';
+import { createStorageAdapter } from '../../infra/storage/storage.factory';
 import type { StorageAdapter } from '../../infra/storage/storage-adapter.interface';
 
 /**
@@ -133,7 +133,9 @@ export class FilesService {
   private readonly storage: StorageAdapter;
 
   constructor() {
-    this.storage = new LocalVolumeAdapter();
+    // Which adapter is decided by STORAGE_DRIVER, in one place. This
+    // service holds the interface and never learns which it got.
+    this.storage = createStorageAdapter();
   }
 
   /**

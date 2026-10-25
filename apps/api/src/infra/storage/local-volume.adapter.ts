@@ -29,7 +29,10 @@ export class LocalVolumeAdapter implements StorageAdapter {
   private readonly root: string;
 
   constructor() {
-    this.root = resolve(loadEnv().RAILWAY_VOLUME_MOUNT_PATH);
+    // Non-null: env.ts's superRefine guarantees this is set whenever
+    // STORAGE_DRIVER=volume, which is the only way this class is
+    // constructed. The assertion records where the check lives.
+    this.root = resolve(loadEnv().RAILWAY_VOLUME_MOUNT_PATH as string);
   }
 
   async put(key: string, body: Buffer, mime: string): Promise<void> {
