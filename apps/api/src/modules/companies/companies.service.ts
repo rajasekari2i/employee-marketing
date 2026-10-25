@@ -112,7 +112,21 @@ export class CompaniesService {
       },
     });
 
-    await tx.companySettings.create({ data: { companyId: company.id } });
+    // Session start times come from the request when given, and fall back
+    // to the same defaults `schema.prisma` gives the columns — so a body
+    // without `settings` creates exactly what it did before this existed.
+    //
+    // They are set HERE, at creation, because there is no settings-edit
+    // endpoint yet: a company created with the wrong session times would
+    // otherwise be stuck with them, and lateness on every attendance record
+    // would be measured against the wrong hour.
+    await tx.companySettings.create({
+      data: {
+        companyId: company.id,
+        morningSessionStart: input.settings.morningSessionStart,
+        eveningSessionStart: input.settings.eveningSessionStart,
+      },
+    });
 
     const companyAdminRole = await tx.role.findUnique({
       where: { key: RoleKey.COMPANY_ADMIN },

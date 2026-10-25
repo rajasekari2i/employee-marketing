@@ -1993,6 +1993,22 @@
             "maxLength": 64,
             "default": "Asia/Kolkata"
           },
+          "settings": {
+            "type": "object",
+            "properties": {
+              "morningSessionStart": {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                "default": "09:00"
+              },
+              "eveningSessionStart": {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                "default": "14:00"
+              }
+            },
+            "default": {}
+          },
           "admin": {
             "type": "object",
             "properties": {
