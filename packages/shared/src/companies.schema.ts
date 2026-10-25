@@ -39,6 +39,47 @@ export const createCompanyAdminSchema = z.object({
 export type CreateCompanyAdminInput = z.infer<typeof createCompanyAdminSchema>;
 
 /**
+ * A company-local time of day, `HH:mm` on a 24-hour clock.
+ *
+ * Stored as a string rather than a time type because it is a *wall-clock*
+ * rule ("the morning session starts at 09:00"), not an instant — it means
+ * the same thing on every date, and `CompanyClock` resolves it against the
+ * company's timezone when it is actually compared to an arrival time.
+ */
+export const timeOfDaySchema = z
+  .string()
+  .regex(
+    /^([01]\d|2[0-3]):[0-5]\d$/,
+    'Must be a 24-hour time of day, e.g. "09:00" or "15:30".',
+  );
+
+/**
+ * The subset of `CompanySettings` that can be set when the company is
+ * created. Nested rather than flattened into the body because these live on
+ * `CompanySettings`, not `Company` — unlike `timezone`, which is a `Company`
+ * column and stays at the top level.
+ *
+ * Only the two session start times for now. The object exists so the next
+ * setting worth exposing at creation is an addition here rather than
+ * another top-level field, and so the body never implies that a
+ * `CompanySettings` value is a property of the company itself.
+ *
+ * Both optional, defaulting to the same values `prisma/schema.prisma` gives
+ * the columns — so a body that omits `settings` entirely produces exactly
+ * what it produced before this existed.
+ */
+export const createCompanySettingsSchema = z.object({
+  /** When the morning session starts. Lateness is measured against it; it never affects pay. */
+  morningSessionStart: timeOfDaySchema.default('09:00'),
+  /** When the evening session starts. */
+  eveningSessionStart: timeOfDaySchema.default('14:00'),
+});
+
+export type CreateCompanySettingsInput = z.infer<
+  typeof createCompanySettingsSchema
+>;
+
+/**
  * `POST /companies` request body. `code` is unique platform-wide and
  * immutable once set (FR-003); `timezone` defaults to "Asia/Kolkata" per
  * the contract, matching `CompanySettings`'s own default in
@@ -58,6 +99,7 @@ export const createCompanySchema = z.object({
   contactEmail: z.string().email().max(200).optional(),
   contactPhone: z.string().min(1).max(32).optional(),
   timezone: z.string().min(1).max(64).default('Asia/Kolkata'),
+  settings: createCompanySettingsSchema.default({}),
   admin: createCompanyAdminSchema,
 });
 

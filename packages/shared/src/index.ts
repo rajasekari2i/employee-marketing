@@ -44,11 +44,14 @@ export {
   passwordPolicySchema,
   createCompanyAdminSchema,
   createCompanySchema,
+  createCompanySettingsSchema,
+  timeOfDaySchema,
   listCompaniesQuerySchema,
   updateCompanySchema,
 } from './companies.schema';
 export type {
   CreateCompanyAdminInput,
+  CreateCompanySettingsInput,
   CreateCompanyInput,
   ListCompaniesQuery,
   UpdateCompanyInput,
