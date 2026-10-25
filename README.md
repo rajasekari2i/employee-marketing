@@ -278,12 +278,27 @@ Railway's Postgres provisions one database — `railway`, owned by the `postgres
 
 The internal host only resolves inside Railway's network; the public one costs egress. Use each where it belongs.
 
-Apply migrations from your machine, as the superuser:
+### Migrations run themselves on deploy
+
+**Prisma has no auto-migrate.** `prisma generate` builds the client and touches no database, and nothing in NestJS startup applies a migration — so something has to run `migrate deploy`.
+
+That something is the container entrypoint (`apps/api/docker-entrypoint.sh`). Set **`MIGRATE_DATABASE_URL`** on the service and every deploy applies pending migrations **once, before the server starts**. If a migration fails the container never starts, which is what you want: a half-migrated schema serving traffic is worse than a deploy that visibly refuses.
+
+Leave `MIGRATE_DATABASE_URL` unset and it skips them — for deployments that migrate from CI instead.
+
+```bash
+# privileged connection, used ONLY by the entrypoint; the app keeps running
+# as the unprivileged DATABASE_URL role
+MIGRATE_DATABASE_URL=postgresql://postgres:<pwd>@postgres.railway.internal:5432/railway
+```
+
+Two credentials is the price of the two-role design: `app_user` cannot `CREATE TABLE` by intent, because Postgres bypasses RLS for superusers. Confining the privilege to one release step is the whole point.
+
+**The seed is separate and runs once**, by hand, for the first System Admin:
 
 ```bash
 cd apps/api
-DATABASE_URL="<DATABASE_PUBLIC_URL>" npx prisma migrate deploy
-DATABASE_URL="<DATABASE_PUBLIC_URL>" npx prisma db seed     # once, for the first System Admin
+DATABASE_URL="<DATABASE_PUBLIC_URL>" npx prisma db seed
 ```
 
 Migration `20261002110942_rls_user_fileobject` is what creates the `app_user` role. **Change its password before going anywhere near production** — the migration hardcodes one and it is committed in this repo:

@@ -49,6 +49,10 @@ RUN pnpm build
 
 ENV NODE_ENV=production
 
+# Migrations run in the entrypoint, before the server starts — see the
+# script for why not in the app process.
+ENTRYPOINT ["/app/apps/api/docker-entrypoint.sh"]
+
 # Railway injects PORT; main.ts reads it and falls back to 3000.
 EXPOSE 3000
 
