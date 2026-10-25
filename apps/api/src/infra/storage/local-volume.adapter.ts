@@ -12,7 +12,7 @@ import type { StorageAdapter } from './storage-adapter.interface';
  * WU-06 DoD item 1 / Architecture §12: writes avatar files under
  * `process.env.RAILWAY_VOLUME_MOUNT_PATH` (Zod-validated at boot by
  * `packages/shared/src/env.ts`). The exact sharding
- * (`photos/<companyId>/<yyyy>/<mm>/<uuid>.webp`) is decided by the caller
+ * (`<user-profile|shop-picture>/<companyId>/<yyyy>/<mm>/<uuid>.webp`) is decided by the caller
  * (`FilesService`) — this adapter only knows how to turn an already-built
  * `key` into bytes on disk, mirroring the plain `put/get/delete/exists`
  * shape a later `S3Adapter` (Architecture D-11) will also implement

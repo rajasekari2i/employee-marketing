@@ -9,7 +9,7 @@ import type { Readable } from 'node:stream';
  * provides `StorageAdapter`, not a rewrite of `FilesService`.
  *
  * `key` is always the full, already-sharded storage key this codebase
- * generates itself (`photos/<companyId>/<yyyy>/<mm>/<uuid>.webp` — see
+ * generates itself (`<user-profile|shop-picture>/<companyId>/<yyyy>/<mm>/<uuid>.webp` — see
  * `FilesService.uploadAvatar`), never client-supplied input.
  */
 export interface StorageAdapter {
