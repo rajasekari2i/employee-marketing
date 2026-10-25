@@ -9,14 +9,15 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "nest build",
+    "build": "prisma generate && nest build",
     "dev": "nest start --watch",
     "format": "prettier --write \"src/**/*.ts\"",
     "start": "nest start",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
+    "start:prod": "node dist/src/main",
     "lint": "eslint \"{src,libs}/**/*.ts\" --fix",
-    "generate:openapi": "ts-node scripts/generate-openapi.ts"
+    "generate:openapi": "ts-node scripts/generate-openapi.ts",
+    "postinstall": "prisma generate"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

@@ -232,6 +232,110 @@ pnpm --filter api exec prisma studio        # browse the database
 
 ---
 
+## Deployment (Railway)
+
+Hosting is Railway: the API, PostgreSQL, and a volume for photos. There is **no `railway.json`, `nixpacks.toml` or `Dockerfile` in this repo** — everything below is configured in Railway's dashboard.
+
+### Service settings
+
+This is a **pnpm workspace**, and that constrains all three settings:
+
+| Setting | Value |
+|---|---|
+| **Root Directory** | `/` — the repo root |
+| **Install** | `corepack enable && pnpm install --frozen-lockfile` |
+| **Build** | `pnpm build` |
+| **Start** | `node apps/api/dist/src/main` |
+
+**Root Directory must be the repo root, not `apps/api`.** `apps/api/package.json` declares `"@field-sales/shared": "workspace:*"`, which only pnpm can resolve. Point Railway at `apps/api` and it finds no lockfile there, falls back to npm, and the build dies with:
+
+```
+npm error code EUNSUPPORTEDPROTOCOL
+npm error Unsupported URL Type "workspace:": workspace:*
+```
+
+The lockfile and the `packageManager` field both live at the root, so building from there is what makes pnpm get selected at all.
+
+`pnpm build` runs Turborepo, whose `build` task declares `dependsOn: ["^build"]` — so `@field-sales/shared` is built before the API that imports it. The API's own `build` runs `prisma generate` first, because a fresh container has no generated client and `nest build` does not create one.
+
+The start command points at **`dist/src/main`**, not `dist/main`: `nest build` preserves the `src/` folder because the API's tsconfig also covers `prisma/` and `scripts/`.
+
+### Database
+
+Railway's Postgres provisions one database — `railway`, owned by the `postgres` superuser. Two connection strings matter, and they are not interchangeable:
+
+| Use | Railway variable | Host |
+|---|---|---|
+| Migrations and `psql`, from your machine | `DATABASE_PUBLIC_URL` | `…proxy.rlwy.net` |
+| The deployed API | `DATABASE_URL` | `postgres.railway.internal` |
+
+The internal host only resolves inside Railway's network; the public one costs egress. Use each where it belongs.
+
+Apply migrations from your machine, as the superuser:
+
+```bash
+cd apps/api
+DATABASE_URL="<DATABASE_PUBLIC_URL>" npx prisma migrate deploy
+DATABASE_URL="<DATABASE_PUBLIC_URL>" npx prisma db seed     # once, for the first System Admin
+```
+
+Migration `20261002110942_rls_user_fileobject` is what creates the `app_user` role. **Change its password before going anywhere near production** — the migration hardcodes one and it is committed in this repo:
+
+```sql
+ALTER ROLE app_user PASSWORD '<a-new-strong-password>';
+```
+
+> That migration ends with `ALTER DEFAULT PRIVILEGES **FOR ROLE postgres**`, hardcoded. Railway's default user happens to be `postgres`, so tables created by later migrations are granted to `app_user` automatically. Migrate as a differently-named role and new tables silently become unreadable to the API.
+
+### Variables on the API service
+
+```bash
+# RUNTIME — app_user, never postgres. Internal host.
+DATABASE_URL=postgresql://app_user:<pwd>@postgres.railway.internal:5432/railway
+
+JWT_ACCESS_SECRET=<32+ chars>
+JWT_REFRESH_SECRET=<32+ chars, different>
+FILE_URL_SECRET=<32+ chars>
+PASSWORD_RESET_SECRET=<32+ chars, different>
+RAILWAY_VOLUME_MOUNT_PATH=/data
+SEED_SYSTEM_ADMIN_USERNAME=<username>
+SEED_SYSTEM_ADMIN_PASSWORD=<8+ chars>
+LOG_LEVEL=info
+```
+
+Those nine are exactly what `packages/shared/src/env.ts` validates. The process refuses to boot on a missing or too-short one and names it in the error, so a bad deploy fails loudly at startup rather than at the first request.
+
+`MIGRATE_DATABASE_URL` is **not** needed here. It is not in the schema and Prisma never reads it; it exists only so you can substitute it locally.
+
+`PORT` is injected by Railway.
+
+### `DATABASE_URL` must be `app_user`, not `postgres`
+
+The single most consequential line above.
+
+**Postgres bypasses row-level security entirely for superusers.** Connect the API as `postgres` and every RLS policy in this application stops applying — silently. No error, nothing in the logs, and most screens keep working because the Prisma extension still filters by `companyId`. What you lose is the second, independent layer that exists precisely for the case where the first one has a gap.
+
+This is the whole reason the project has two roles rather than one.
+
+### Verify after deploying
+
+```sql
+-- both must be false
+SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = 'app_user';
+
+-- every tenant table: rls enabled AND forced
+SELECT relname, relrowsecurity, relforcerowsecurity
+FROM pg_class WHERE relkind = 'r' AND relrowsecurity ORDER BY relname;
+```
+
+Then confirm the API answers: an unauthenticated `GET /api/v1/salary-runs` should be `401`, not a connection error.
+
+### The volume
+
+`RAILWAY_VOLUME_MOUNT_PATH` must point at a volume actually mounted on the API service, or shop photos and avatars have nowhere to land. Attach it in Railway and set the variable to the same mount path.
+
+---
+
 ## Background Jobs
 
 **None are built yet.** `@nestjs/schedule` is not a dependency and no job runs anywhere in the codebase. This is stated explicitly because `03-ARCHITECTURE.md` §14 specifies a full set, and their absence changes how the system behaves today:
@@ -399,6 +503,20 @@ pnpm --filter mobile android                 # last resort: reinstall
 The asymmetry that causes this repeatedly: `react-native run-android` recreates the **8081** tunnel automatically, but **nothing ever recreates 3000**. So the state right after a reinstall is usually "app loads fine, no data" — Metro is up because the CLI restored it, and the API is unreachable because nobody restored that one. Run both commands, every time, not just the one the error names.
 
 The payslip PDF opens in the system browser through this same tunnel, so check it before suspecting the code.
+
+### Railway build fails with `EUNSUPPORTEDPROTOCOL` / `Unsupported URL Type "workspace:"`
+
+Railway is running **npm** against a **pnpm** workspace. The giveaway is that it ran npm at all: `pnpm-lock.yaml` and the `packageManager` field are both at the repo root, so pnpm is detected when the build starts there. It falls back to npm when the service's **Root Directory** is set to `apps/api`, where there is no lockfile — and `apps/api/package.json` declares `"@field-sales/shared": "workspace:*"`, which npm cannot resolve.
+
+Set Root Directory to `/` and set the install, build and start commands explicitly. See [Deployment](#deployment-railway).
+
+### Deployed API exits immediately with `MODULE_NOT_FOUND`
+
+The start command is probably `node dist/main`. The compiled entry is **`dist/src/main.js`** — `nest build` preserves the `src/` folder because the API's tsconfig also covers `prisma/` and `scripts/`. Use `node apps/api/dist/src/main`, or `pnpm --filter api start:prod`, which points at the same place.
+
+### Deployed API fails on `@prisma/client` / "did not initialize yet"
+
+`prisma generate` has not run. A fresh container has no generated client, and `nest build` does not create one. The API's `build` script runs it first, and `postinstall` runs it on install — so this should only appear if the build command was overridden to call `nest build` directly.
 
 ### `prisma migrate dev` fails with **P3014**
 
