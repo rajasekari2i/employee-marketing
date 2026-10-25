@@ -26,7 +26,7 @@ import type { StorageAdapter } from './storage-adapter.interface';
  * bucket has to travel in the path.
  *
  * The `key` is the same sharded key the local adapter uses
- * (`photos/<companyId>/<yyyy>/<mm>/<uuid>.webp`). On S3 those slashes are
+ * (`<user-profile|shop-picture>/<companyId>/<yyyy>/<mm>/<uuid>.webp`). On S3 those slashes are
  * just part of a flat key rather than real directories, which is why no
  * bucket "folders" need creating — the first upload materialises the
  * prefix.

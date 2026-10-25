@@ -356,7 +356,16 @@ S3_FORCE_PATH_STYLE=true           # true for everything except AWS
 
 Validation is conditional: pick a driver and only its variables are required, so a wrong combination fails **at boot naming the missing variable** rather than at the first upload.
 
-Either way, photos are keyed `photos/<companyId>/<yyyy>/<mm>/<uuid>.webp`. On S3 those slashes are part of a flat key, not folders — **nothing needs pre-creating in the bucket**. Avatars and shop photos share the prefix; what distinguishes them is `FileObject.kind` (`USER_AVATAR` / `SHOP_PHOTO`), not their location.
+Either way, photos are keyed by **what they are**:
+
+```
+user-profile/<companyId>/<yyyy>/<mm>/<uuid>.webp
+shop-picture/<companyId>/<yyyy>/<mm>/<uuid>.webp
+```
+
+On S3 those slashes are part of a flat key rather than real folders, so **nothing needs pre-creating in the bucket** — the first upload materialises the prefix. The `FileObject.kind` column (`USER_AVATAR` / `SHOP_PHOTO`) remains the authoritative distinction; the prefix exists so a human browsing the bucket or the volume can tell them apart too.
+
+Files written before this split keep their original `photos/...` keys and keep working: every read uses the `storageKey` stored on the row, never a path rebuilt from its parts.
 
 ---
 

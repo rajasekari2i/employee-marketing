@@ -302,8 +302,20 @@ export class FilesService {
       const yyyy = String(now.getUTCFullYear());
       const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
       const companySegment = companyId ?? NULL_COMPANY_SENTINEL;
-      const storageKey = `photos/${companySegment}/${yyyy}/${mm}/${id}.webp`;
-      const thumbKey = `photos/${companySegment}/${yyyy}/${mm}/${id}_thumb.webp`;
+
+      // The prefix reflects what the photo IS, so the two kinds land in
+      // separate trees rather than one shared `photos/` directory. The
+      // database already distinguishes them via `FileObject.kind`; this is
+      // for the human looking at the bucket or the volume, which is a real
+      // need when someone has to find or audit a file by hand.
+      //
+      // Reads are unaffected by this changing: every read goes through the
+      // `storageKey`/`thumbKey` STORED on the row, never a path rebuilt
+      // from the parts. Files written before this keep their `photos/...`
+      // keys and keep working, so no migration and no backfill.
+      const prefix = kind === 'SHOP_PHOTO' ? 'shop-picture' : 'user-profile';
+      const storageKey = `${prefix}/${companySegment}/${yyyy}/${mm}/${id}.webp`;
+      const thumbKey = `${prefix}/${companySegment}/${yyyy}/${mm}/${id}_thumb.webp`;
 
       await this.storage.put(storageKey, fullBuffer, 'image/webp');
       await this.storage.put(thumbKey, thumbBuffer, 'image/webp');
