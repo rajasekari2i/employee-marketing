@@ -167,7 +167,10 @@ pnpm --filter @field-sales/shared build
 | `JWT_ACCESS_TTL` / `JWT_REFRESH_TTL` | `15m` / `60d` |
 | `FILE_URL_SECRET` | HMAC for signed file and payslip URLs |
 | `PASSWORD_RESET_SECRET` | HMAC for reset tokens |
-| `RAILWAY_VOLUME_MOUNT_PATH` | Photo storage root |
+| `STORAGE_DRIVER` | `volume` (default) or `s3` |
+| `RAILWAY_VOLUME_MOUNT_PATH` | Photo storage root. Required when `STORAGE_DRIVER=volume` |
+| `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Required when `STORAGE_DRIVER=s3` |
+| `S3_REGION`, `S3_ENDPOINT`, `S3_FORCE_PATH_STYLE` | Optional. `S3_ENDPOINT` is required for anything other than AWS |
 | `SEED_SYSTEM_ADMIN_USERNAME` / `_PASSWORD` | First System Admin, used by the seed |
 | `LOG_LEVEL`, `PORT` | `info`, `3000` |
 
@@ -334,9 +337,26 @@ FROM pg_class WHERE relkind = 'r' AND relrowsecurity ORDER BY relname;
 
 Then confirm the API answers: an unauthenticated `GET /api/v1/salary-runs` should be `401`, not a connection error.
 
-### The volume
+### Photo storage
 
-`RAILWAY_VOLUME_MOUNT_PATH` must point at a volume actually mounted on the API service, or shop photos and avatars have nowhere to land. Attach it in Railway and set the variable to the same mount path.
+Two backends, chosen by `STORAGE_DRIVER`, behind one `StorageAdapter` interface.
+
+**`volume` (default).** A disk mounted into the container. **It has no credentials** — the app writes to it with ordinary filesystem calls. Attach the volume in Railway and set `RAILWAY_VOLUME_MOUNT_PATH` to the same mount path, or photos have nowhere to land.
+
+**`s3`.** Any S3-compatible endpoint — AWS, Railway object storage, MinIO, R2:
+
+```bash
+STORAGE_DRIVER=s3
+S3_BUCKET=<bucket>
+S3_ACCESS_KEY_ID=<access key>
+S3_SECRET_ACCESS_KEY=<secret key>
+S3_ENDPOINT=https://<endpoint>     # omit for AWS, required for everyone else
+S3_FORCE_PATH_STYLE=true           # true for everything except AWS
+```
+
+Validation is conditional: pick a driver and only its variables are required, so a wrong combination fails **at boot naming the missing variable** rather than at the first upload.
+
+Either way, photos are keyed `photos/<companyId>/<yyyy>/<mm>/<uuid>.webp`. On S3 those slashes are part of a flat key, not folders — **nothing needs pre-creating in the bucket**. Avatars and shop photos share the prefix; what distinguishes them is `FileObject.kind` (`USER_AVATAR` / `SHOP_PHOTO`), not their location.
 
 ---
 
