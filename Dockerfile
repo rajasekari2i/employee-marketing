@@ -40,7 +40,16 @@ COPY . .
 # --frozen-lockfile: fail loudly if pnpm-lock.yaml and the manifests
 # disagree, rather than quietly resolving something different from what was
 # tested.
-RUN pnpm install --frozen-lockfile
+#
+# --prod=false: do NOT let an ambient NODE_ENV decide what gets installed.
+# Railway injects service variables into the build, so a NODE_ENV=production
+# set on the service would make pnpm skip devDependencies — which is where
+# the Prisma CLI and ts-node live. The entrypoint needs both (`prisma
+# migrate deploy`, and `prisma db seed` running prisma/seed.ts through
+# ts-node), so without this the container would build fine and then die at
+# boot on "prisma: not found". ENV NODE_ENV=production below is set after
+# this line deliberately, for the same reason.
+RUN pnpm install --frozen-lockfile --prod=false
 
 # Turborepo builds @field-sales/shared first (its `build` task declares
 # dependsOn: ["^build"]), and the API's own build runs `prisma generate`

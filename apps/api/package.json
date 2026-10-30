@@ -10,6 +10,7 @@
   },
   "scripts": {
     "build": "prisma generate && nest build",
+    "predev": "./scripts/prepare-dev-db.sh",
     "dev": "nest start --watch",
     "format": "prettier --write \"src/**/*.ts\"",
     "start": "nest start",

@@ -42,11 +42,21 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_user;
 
 -- Keep app_user's privileges current for tables/sequences created by later
--- migrations (which run as the "postgres" owner role) without having to
--- remember to re-GRANT by hand every time.
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+-- migrations without having to remember to re-GRANT by hand every time.
+--
+-- FOR ROLE is deliberately omitted. Postgres then records the entry against
+-- the CURRENT role -- whichever role MIGRATE_DATABASE_URL connects as -- and
+-- that is the only role it can usefully be recorded against: default
+-- privileges apply exclusively to objects created BY the role they are keyed
+-- to. Hard-coding "postgres" tied this to one provider's superuser name and
+-- failed both ways on a managed Postgres whose owner role is named something
+-- else: outright on a fresh database ("role postgres does not exist"), and
+-- silently otherwise -- every table created by a later migration would be
+-- left ungranted, surfacing as "permission denied for table X" at runtime
+-- rather than at deploy time.
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user;
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO app_user;
 
 -- ---------------------------------------------------------------------------
