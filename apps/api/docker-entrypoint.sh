@@ -57,8 +57,54 @@ if [ -z "$MIGRATE_DATABASE_URL" ]; then
 else
   cd /app/apps/api
 
-  echo "[entrypoint] applying migrations"
-  DATABASE_URL="$MIGRATE_DATABASE_URL" npx prisma migrate deploy
+  # Retry loop, for Railway's private network specifically.
+  #
+  # "postgres.railway.internal" resolves over a wireguard mesh that is NOT
+  # up the instant the container is: Railway documents a short delay before
+  # private networking is established, and it is IPv6-only. The release
+  # step is the very first thing this container does, so it races that
+  # setup and loses — Prisma reports P1001 "Can't reach database server",
+  # `set -e` kills the container, and Railway restarts it into the same
+  # race. The visible symptom is a crash-looping deploy and a database
+  # with no tables, which looks identical to the migration never being
+  # attempted.
+  #
+  # Only P1001 is retried. A migration that fails on its SQL fails on the
+  # first try and stays failed, rather than being hidden behind ten
+  # retries of a genuine error.
+  attempt=1
+  max_attempts=10
+  while :; do
+    echo "[entrypoint] applying migrations (attempt $attempt/$max_attempts)"
+    # Redirect-then-cat, NOT `... | tee`: the exit status of a pipeline is
+    # the status of its LAST command, so piping through tee would report
+    # tee's success and the failure branch below would be dead code.
+    # /bin/sh here is dash, which has no `set -o pipefail` to fix that.
+    if DATABASE_URL="$MIGRATE_DATABASE_URL" npx prisma migrate deploy \
+         >/tmp/migrate.log 2>&1; then
+      cat /tmp/migrate.log
+      break
+    fi
+    cat /tmp/migrate.log >&2
+
+    if ! grep -q "P1001" /tmp/migrate.log; then
+      echo "[entrypoint] FATAL: migration failed for a reason other than" >&2
+      echo "[entrypoint] reachability — see the Prisma error above." >&2
+      exit 1
+    fi
+
+    if [ "$attempt" -ge "$max_attempts" ]; then
+      echo "[entrypoint] FATAL: database still unreachable after" >&2
+      echo "[entrypoint] $max_attempts attempts. Check that the Postgres" >&2
+      echo "[entrypoint] service is running and that MIGRATE_DATABASE_URL's" >&2
+      echo "[entrypoint] host matches it." >&2
+      exit 1
+    fi
+
+    echo "[entrypoint] database not reachable yet (P1001), retrying in 3s"
+    attempt=$((attempt + 1))
+    sleep 3
+  done
 
   # Seeding was missing here entirely while scripts/prepare-dev-db.sh did
   # run it, which is exactly why this worked locally and not in production:
