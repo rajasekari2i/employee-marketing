@@ -102,13 +102,33 @@ async function ensureSystemAdminRole(): Promise<{ id: string }> {
   });
 }
 
+/**
+ * Create-only for credentials.
+ *
+ * This used to overwrite `passwordHash` on every run. That was harmless
+ * while the seed was a local-only step, but docker-entrypoint.sh now runs
+ * it on every boot, which made SEED_SYSTEM_ADMIN_PASSWORD — not the
+ * database — the effective source of truth for this account: a password
+ * changed through the app was silently reverted by the next restart or
+ * redeploy, with nothing in the logs to explain it.
+ *
+ * So an existing row's password is left alone. `roleId` is still repaired,
+ * because that is a referential concern rather than a credential: a user
+ * pointing at a `Role` row that no longer exists cannot authorise anything
+ * and there is no way to fix it from inside the app.
+ *
+ * Deliberately resetting the password is still possible — losing the only
+ * platform-level login with no recovery path would be worse than the
+ * problem this fixes — but it now has to be asked for, once, rather than
+ * happening on every restart:
+ *
+ *   SEED_FORCE_ADMIN_PASSWORD=true  (then unset it again)
+ */
 async function ensureSystemAdminUser(
   roleId: string,
   username: string,
   plainPassword: string,
 ): Promise<void> {
-  const passwordHash = await hash(plainPassword);
-
   // Same reasoning as ensureSystemAdminRole() above: `User`'s
   // `@@unique([companyId, username])` compound index has the identical
   // non-nullable-`companyId`-in-the-compound-type limitation, so this is a
@@ -121,23 +141,53 @@ async function ensureSystemAdminUser(
   });
 
   if (existing) {
-    await prisma.user.update({
-      where: { id: existing.id },
-      data: { passwordHash, roleId, status: 'ACTIVE' },
-    });
+    // Read straight from process.env rather than the shared env schema:
+    // this is a seed-only escape hatch, and the API has no business
+    // carrying a variable that can rewrite an admin credential.
+    const forceReset = /^(1|true|yes)$/i.test(
+      process.env.SEED_FORCE_ADMIN_PASSWORD ?? '',
+    );
+
+    if (forceReset) {
+      await prisma.user.update({
+        where: { id: existing.id },
+        data: { passwordHash: await hash(plainPassword), roleId, status: 'ACTIVE' },
+      });
+      console.warn(
+        `[seed] SEED_FORCE_ADMIN_PASSWORD is set — reset "${username}"'s ` +
+          'password, role and status from the environment. Unset it so the ' +
+          'next restart does not do this again.',
+      );
+      return;
+    }
+
+    if (existing.roleId !== roleId) {
+      await prisma.user.update({
+        where: { id: existing.id },
+        data: { roleId },
+      });
+      console.log(
+        `[seed] SYSTEM_ADMIN user "${username}" re-pointed at the current ` +
+          'SYSTEM_ADMIN role. Password left unchanged.',
+      );
+      return;
+    }
+
     console.log(
-      `[seed] SYSTEM_ADMIN user "${username}" already existed — refreshed password hash/role/status.`,
+      `[seed] SYSTEM_ADMIN user "${username}" already exists — left unchanged.`,
     );
     return;
   }
 
+  // Only reached when the account does not exist, so the argon2 hash is
+  // computed on a first deploy rather than on every boot.
   await prisma.user.create({
     data: {
       companyId: null,
       roleId,
       name: SYSTEM_ADMIN_ROLE_LABEL,
       username,
-      passwordHash,
+      passwordHash: await hash(plainPassword),
       status: 'ACTIVE',
     },
   });
