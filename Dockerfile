@@ -58,6 +58,15 @@ RUN pnpm build
 
 ENV NODE_ENV=production
 
+# Quiet the two update notifiers that write into the release step's output.
+# Neither is actionable from inside a container, and between them they made
+# a genuine deprecation warning ("package.json#prisma is deprecated") easy
+# to miss in a deploy log. Note what Prisma's notifier actually advertises
+# at the time of writing — 8.0.0-rc.28, a release candidate — which is not
+# something a production image should be nudging anyone toward.
+ENV PRISMA_HIDE_UPDATE_MESSAGE=true
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
+
 # Migrations run in the entrypoint, before the server starts — see the
 # script for why not in the app process.
 ENTRYPOINT ["/app/apps/api/docker-entrypoint.sh"]
