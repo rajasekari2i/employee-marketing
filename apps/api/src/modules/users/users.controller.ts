@@ -16,6 +16,7 @@ import {
   createUserSchema,
   listUsersQuerySchema,
   salaryRateSchema,
+  setUserPasswordSchema,
   updateUserSchema,
 } from '@field-sales/shared';
 
@@ -35,6 +36,7 @@ class CreateUserDto extends createZodDto(createUserSchema) {}
 class ListUsersQueryDto extends createZodDto(listUsersQuerySchema) {}
 class UpdateUserDto extends createZodDto(updateUserSchema) {}
 class SalaryRateDto extends createZodDto(salaryRateSchema) {}
+class SetUserPasswordDto extends createZodDto(setUserPasswordSchema) {}
 
 /**
  * User Story 3 (specs/001-company-user-auth/orchestration-plan.md) /
@@ -93,6 +95,50 @@ export class UsersController {
     return this.usersService.update(
       this.requireCompanyId(request),
       this.requireCallerId(request),
+      id,
+      body,
+    );
+  }
+
+  /**
+   * Signs the target user out of every device (`contracts/users.md`).
+   *
+   * Requires `Idempotency-Key` like every other mutating route here, and
+   * is safe to replay regardless: a second call just bumps `tokenVersion`
+   * again and finds no un-revoked refresh tokens left, reporting
+   * `revokedSessions: 0`.
+   */
+  @Post(':id/revoke-sessions')
+  @UseGuards(RequireIdempotencyKeyGuard)
+  @Audited('user.sessions.revoke', 'User')
+  revokeSessions(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
+    return this.usersService.revokeSessions(this.requireCompanyId(request), id);
+  }
+
+  /**
+   * Sets another user's password (`contracts/users.md`). Requires
+   * `Idempotency-Key`.
+   *
+   * `@Audited()` is safe to apply here even though the request carries a
+   * plaintext password: `AuditInterceptor` persists the handler's RESULT
+   * (`after: toJsonValue(result)`), never the request body, and this
+   * returns only `{ revokedSessions }`. The request body is kept out of
+   * the logs separately, by `newPassword` being one of `deep-redact.ts`'s
+   * `SENSITIVE_KEYS` (Constitution rule 9).
+   */
+  @Post(':id/password')
+  @UseGuards(RequireIdempotencyKeyGuard)
+  @Audited('user.password.set', 'User')
+  setPassword(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: SetUserPasswordDto,
+  ) {
+    return this.usersService.setPassword(
+      this.requireCompanyId(request),
       id,
       body,
     );

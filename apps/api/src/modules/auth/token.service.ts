@@ -303,11 +303,18 @@ export class TokenService {
    * fresh one, which the `tokenVersion` bump alone would not prevent).
    * Mirrors {@link revokeRefreshToken}'s own `updateMany` shape, just
    * scoped to every row for this user instead of a single token id.
+   *
+   * Also called by `UsersService.revokeSessions()` (`POST
+   * /users/:id/revoke-sessions`), which is why this returns the number of
+   * rows it revoked rather than `void` — that endpoint reports the count
+   * back to the Company Admin who triggered it. The password-reset callers
+   * above ignore the return value.
    */
-  async revokeAllRefreshTokens(userId: string): Promise<void> {
-    await prisma.refreshToken.updateMany({
+  async revokeAllRefreshTokens(userId: string): Promise<number> {
+    const { count } = await prisma.refreshToken.updateMany({
       where: { userId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    return count;
   }
 }

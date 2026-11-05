@@ -125,13 +125,32 @@ export type CreateUserInput = z.infer<typeof createUserSchema>;
 
 /**
  * `PATCH /users/:id` request body — every field optional (contracts/users
- * .md). `role` is deliberately absent: "not patchable here in this slice."
+ * .md).
+ *
+ * `role` and `username` ARE patchable (they were not in slice 001, whose
+ * comment here read "not patchable in this slice"). `role` reuses
+ * `tenantAssignableRoleKeySchema`, not the full `roleKeySchema`, for the
+ * same reason `createUserSchema` does: a Company Admin must never be able
+ * to promote anyone — themselves included — to `SYSTEM_ADMIN` through this
+ * endpoint.
+ *
+ * Unlike `createUserSchema`, there is deliberately NO cross-field rule
+ * tying `username` to `role` here. On create, FR-017 forbids a username on
+ * an `EMPLOYEE` row because that row has never had credentials. On update,
+ * a role change leaves the existing `username`/`passwordHash` in place and
+ * dormant, so that demoting someone to `EMPLOYEE` and later restoring
+ * their old role gives back the login they already had. What makes that
+ * dormancy safe is a role check at sign-in (see `auth.service.ts`'s
+ * `login`/`refresh`/`forgotPassword`/`verifyOtp`), NOT the absence of a
+ * stored credential.
  */
 export const updateUserSchema = z
   .object({
     name: z.string().min(1).max(200).optional(),
     email: z.string().email().max(200).optional(),
+    role: tenantAssignableRoleKeySchema.optional(),
     status: userStatusSchema.optional(),
+    username: z.string().min(1).max(64).optional(),
     photoFileId: z.string().min(1).optional(),
     monthlySalary: decimalStringSchema.optional(),
     halfDayRate: decimalStringSchema.optional(),
@@ -140,6 +159,26 @@ export const updateUserSchema = z
   .superRefine(checkRatePair);
 
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
+
+/**
+ * `POST /users/:id/password` request body — a Company Admin setting another
+ * user's password (contracts/users.md).
+ *
+ * The field is named `newPassword`, not `temporaryPassword` (which is what
+ * `createUserSchema` calls the same thing), for one concrete reason:
+ * `newPassword` is already in `deep-redact.ts`'s `SENSITIVE_KEYS`, so the
+ * value is censored out of every request log line by the logger that is
+ * already wired up, with nothing further to remember (Constitution rule 9).
+ * It also matches `/auth/change-password`'s own field name.
+ *
+ * Reuses `passwordPolicySchema` so an admin-set password has to clear
+ * exactly the same FR-013 bar as one the user picks themself.
+ */
+export const setUserPasswordSchema = z.object({
+  newPassword: passwordPolicySchema,
+});
+
+export type SetUserPasswordInput = z.infer<typeof setUserPasswordSchema>;
 
 /** `POST /users/:id/salary-rates` request body — both fields required (contracts/users.md). */
 export const salaryRateSchema = z.object({

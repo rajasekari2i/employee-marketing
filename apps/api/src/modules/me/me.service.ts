@@ -128,10 +128,28 @@ export class MeService {
 
     await prisma.$transaction(async (tx) => {
       await this.setRlsContext(tx, payload.companyId);
+
+      // Read what they were pointing at BEFORE repointing: a profile photo
+      // is replaced, not versioned, so the row it leaves behind has to go
+      // with it rather than accumulate in `file_objects`.
+      const before = await tx.user.findUnique({
+        where: { id: payload.sub },
+        select: { photoId: true },
+      });
+
       await tx.user.update({
         where: { id: payload.sub },
         data: { photoId: fileObject.id },
       });
+
+      if (before?.photoId) {
+        // Unconditional, even when `before.photoId === fileObject.id`
+        // (which is what re-uploading the identical image produces, via
+        // the upload pipeline's sha256 dedupe) — `deleteIfUnreferenced`
+        // counts references itself and leaves a still-referenced row
+        // alone, so this caller does not have to special-case that.
+        await this.filesService.deleteIfUnreferenced(tx, before.photoId);
+      }
     });
 
     return {

@@ -31,10 +31,10 @@
  *
  * `apps/api/prisma/schema.prisma`'s `datasource db { url =
  * env("DATABASE_URL") }` means the Prisma CLI's `db seed` command (which
- * runs this file, via this package's `package.json` `"prisma": { "seed":
- * ... }` entry) reads whatever `DATABASE_URL` happens to be in the
- * environment at invocation time — there is no separate "seed connection"
- * concept in Prisma. Run this with:
+ * runs this file, via `migrations.seed` in `apps/api/prisma.config.ts`)
+ * reads whatever `DATABASE_URL` happens to be in the environment at
+ * invocation time — there is no separate "seed connection" concept in
+ * Prisma. Run this with:
  *
  *   cd apps/api
  *   DATABASE_URL="postgresql://postgres:<pwd>@localhost:5432/field_sales" \

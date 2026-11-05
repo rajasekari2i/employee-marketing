@@ -107,6 +107,28 @@ interface OtpCandidate {
   companyId: string | null;
   mobile: string | null;
   passwordHash: string | null;
+  role: { key: RoleKey };
+}
+
+/**
+ * Whether a role is allowed to hold a session at all.
+ *
+ * FR-008 states EMPLOYEE rows never sign in. Until role became patchable
+ * (`PATCH /users/:id`), that was enforced structurally: `POST /users`
+ * refuses a username/password for an EMPLOYEE, so the row simply had no
+ * `passwordHash` and every credential path short-circuited on the null.
+ *
+ * Role is editable now, and demoting someone to EMPLOYEE deliberately
+ * LEAVES their `username`/`passwordHash` in place so that restoring their
+ * old role gives back the login they already had (see
+ * `users.service.ts`'s `update`). That makes a stored hash on an EMPLOYEE
+ * row a normal, expected state — so "can this row sign in" has to be asked
+ * of the role, not inferred from the presence of a credential. Every
+ * credential-accepting path below (`login`, `refresh`, `forgotPassword`,
+ * `verifyOtp`) asks this before honouring the credential.
+ */
+function roleCanSignIn(key: RoleKey): boolean {
+  return key !== 'EMPLOYEE';
 }
 
 export interface LoginResultUser {
@@ -187,14 +209,24 @@ export class AuthService {
 
     const candidate = await this.findCandidate(companyId, input.username);
 
-    // `candidate.passwordHash` is `null` for any row that can never sign in
-    // (FR-008: EMPLOYEE rows never have one) — short-circuit before calling
-    // `password.verify()` rather than letting it reject a null hash itself,
-    // so "no such user"/"user can't sign in"/"wrong password" all produce
-    // the exact same branch and the exact same message (FR-007's "identical
-    // message either way", generalised to every failure shape here).
+    // `candidate.passwordHash` is `null` for any row that never had
+    // credentials — short-circuit before calling `password.verify()` rather
+    // than letting it reject a null hash itself, so "no such user"/"user
+    // can't sign in"/"wrong password" all produce the exact same branch and
+    // the exact same message (FR-007's "identical message either way",
+    // generalised to every failure shape here).
+    //
+    // `roleCanSignIn` is checked HERE, in the same expression, rather than
+    // as its own `if` after a successful verify: a user demoted to EMPLOYEE
+    // keeps their hash (see that function's comment), so a separate branch
+    // would answer "that account was demoted" to anyone who guessed the
+    // right password, and a distinguishable third outcome is exactly what
+    // FR-007 forbids. Folded in like this, a demoted user is rejected with
+    // the same message, the same timing and the same failed-attempt
+    // bookkeeping as any other bad login.
     const passwordOk = Boolean(
       candidate?.passwordHash &&
+      roleCanSignIn(candidate.role.key) &&
       (await password.verify(candidate.passwordHash, input.password)),
     );
 
@@ -258,7 +290,17 @@ export class AuthService {
     const candidate = await this.findById(consumed.companyId, consumed.userId);
     const companyActive = await this.isCompanyActive(consumed.companyId);
 
-    if (!candidate || candidate.status !== 'ACTIVE' || !companyActive) {
+    // `roleCanSignIn` here is what actually ends a demoted user's session:
+    // `PATCH /users/:id` deliberately does not bump `tokenVersion` on a role
+    // change, so their current 15-minute access token keeps working to its
+    // natural expiry — but the refresh that would extend the session past
+    // that point is refused, so the session dies at the next rotation.
+    if (
+      !candidate ||
+      candidate.status !== 'ACTIVE' ||
+      !companyActive ||
+      !roleCanSignIn(candidate.role.key)
+    ) {
       throw new AppError(
         'TOKEN_EXPIRED',
         'Refresh token is invalid or has expired.',
@@ -308,7 +350,11 @@ export class AuthService {
       resolved.companyId,
       input.username,
     );
-    if (!candidate?.passwordHash || !candidate.mobile) {
+    if (
+      !candidate?.passwordHash ||
+      !candidate.mobile ||
+      !roleCanSignIn(candidate.role.key)
+    ) {
       return { maskedMobile: GENERIC_MASKED_MOBILE };
     }
 
@@ -368,7 +414,7 @@ export class AuthService {
       resolved.companyId,
       input.username,
     );
-    if (!candidate?.passwordHash) {
+    if (!candidate?.passwordHash || !roleCanSignIn(candidate.role.key)) {
       throw new AppError('OTP_INCORRECT', OTP_INCORRECT_MESSAGE);
     }
 
@@ -670,7 +716,13 @@ export class AuthService {
           username: { equals: username, mode: 'insensitive' },
           ...(companyId === null ? { role: { key: 'SYSTEM_ADMIN' } } : {}),
         },
-        select: { id: true, companyId: true, mobile: true, passwordHash: true },
+        select: {
+          id: true,
+          companyId: true,
+          mobile: true,
+          passwordHash: true,
+          role: { select: { key: true } },
+        },
       });
     });
   }

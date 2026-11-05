@@ -6,7 +6,7 @@ import {
 } from 'node:crypto';
 import type { Readable } from 'node:stream';
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaClient, type FileObject } from '@prisma/client';
 import { AppError, loadEnv } from '@field-sales/shared';
 import sharp from 'sharp';
@@ -34,12 +34,51 @@ const TOKEN_TTL_SECONDS = 10 * 60;
 /** Sentinel for a `null` companyId inside the signed token's payload — same convention `token.service.ts` already uses for the identical "null company" case in `RefreshToken`'s opaque value. */
 const NULL_COMPANY_SENTINEL = '-';
 
+/**
+ * How long an unattached `USER_AVATAR` row is left alone before
+ * {@link FilesService.sweepAbandonedAvatars} will remove it. Both legs of
+ * the attach flow (`POST /files/avatars`, then `POST`/`PATCH /users`) are
+ * ordinary online requests within one form session, so this is generous by
+ * three orders of magnitude on purpose — the cost of waiting a day is a
+ * few stale rows, the cost of being too eager is deleting a photo out from
+ * under a form somebody still has open.
+ */
+const ABANDONED_UPLOAD_GRACE_HOURS = 24;
+
+/** Most rows one sweep run will remove, so a backlog is worked off over several nights instead of in one long transaction. */
+const SWEEP_BATCH_LIMIT = 500;
+
+/** Advisory-lock name for the sweep (Architecture §14 — every scheduled job takes one so overlapping replicas cannot double-run it). */
+const SWEEP_LOCK_NAME = 'sweep-abandoned-avatars';
+
 const ALLOWED_DECLARED_MIME_TYPES = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
   'image/heic',
 ]);
+
+/**
+ * The subset of a Prisma transaction client
+ * {@link FilesService.deleteIfUnreferenced} needs. Declared structurally
+ * rather than as `Prisma.TransactionClient` so BOTH kinds of transaction
+ * in this codebase can be passed: the unextended one `me.service.ts`
+ * opens itself, and the Layer-1 tenant-extended one `users.service.ts`
+ * picks up off CLS.
+ */
+export type FileCleanupTx = Pick<
+  PrismaClient,
+  'fileObject' | 'user' | 'shopPhoto'
+>;
+
+/** Where one `FileObject`'s bytes live — the pair every deletion has to remove once the row is gone. */
+type StoredObjectKeys = { storageKey: string; thumbKey: string | null };
+
+/** What one {@link FilesService.sweepAbandonedAvatars} run did. `skipped` means another replica held the advisory lock, which is a normal outcome during a deploy, not a failure. */
+export interface SweepResult {
+  skipped: boolean;
+  deleted: number;
+}
 
 export interface ServedFile {
   stream: Readable;
@@ -130,6 +169,7 @@ function detectImageType(buffer: Buffer): string | null {
  */
 @Injectable()
 export class FilesService {
+  private readonly logger = new Logger(FilesService.name);
   private readonly storage: StorageAdapter;
 
   constructor() {
@@ -339,6 +379,221 @@ export class FilesService {
         },
       });
     });
+  }
+
+  /**
+   * Deletes a `FileObject` row and the bytes behind it, once nothing
+   * points at it any more.
+   *
+   * A profile photo is deliberately NOT versioned: replacing someone's
+   * photo REPLACES it, it does not leave the old row sitting in
+   * `file_objects` next to the new one. So every place that repoints
+   * `User.photoId` calls this with the id it has just stopped pointing
+   * at. This is not a hole in Constitution rule 4 (append-only history):
+   * that rule is about records a manager reviews after the fact —
+   * attendance amendments, salary corrections, shop pin changes. An
+   * avatar is not a record of anything, and nothing in BRD/PRD ever asks
+   * to see a previous one.
+   *
+   * Must be called with the SAME transaction that did the repoint, after
+   * the repoint — the reference count below has to see the new state, not
+   * the committed old one, or it would always find the user still
+   * pointing at their previous photo and never delete a thing.
+   *
+   * Deliberately conservative: it only deletes a genuinely unreferenced
+   * row, which covers two cases that look like "the old photo" but are
+   * not:
+   *  - re-uploading the identical image dedupes to the SAME row the user
+   *    already has (see {@link processAndStore}), so the "previous" id
+   *    handed in here is sometimes the id that was just saved;
+   *  - a `SHOP_PHOTO` row can be referenced by several `ShopPhoto` rows.
+   * Either shows up as a non-zero count and leaves the row alone.
+   */
+  async deleteIfUnreferenced(tx: FileCleanupTx, fileId: string): Promise<void> {
+    const keys = await this.deleteRowIfUnreferenced(tx, fileId);
+    if (keys) {
+      await this.deleteObjects(keys);
+    }
+  }
+
+  /**
+   * Removes `USER_AVATAR` rows that were uploaded through `POST
+   * /files/avatars` and then never attached to anybody — the admin who
+   * picked a photo on the User form and then picked a different one, or
+   * closed the form without saving. The upload happens the moment the
+   * photo is picked (`UserFormScreen.pickAndUploadPhoto`), so the row
+   * exists well before the request that would have given it an owner, and
+   * nothing is left pointing at it when that request never comes.
+   *
+   * Two things keep this from eating a photo someone is mid-way through
+   * attaching:
+   *  - only rows older than {@link ABANDONED_UPLOAD_GRACE_HOURS} are even
+   *    considered, which is orders of magnitude longer than the gap
+   *    between picking a photo and saving the form (both legs are plain
+   *    online requests — neither the upload nor `POST`/`PATCH /users` goes
+   *    through the mobile outbox);
+   *  - every candidate still goes through the same reference count every
+   *    other deletion does.
+   *
+   * `SHOP_PHOTO` rows are deliberately out of scope: `POST
+   * /shops/:id/photos` uploads and attaches in a single request, so a shop
+   * photo has no window in which it can be abandoned.
+   *
+   * Companies are walked one at a time because that is what the tenant
+   * boundary allows — `file_objects` is RLS-`FORCE`d, and the policy only
+   * reveals rows matching the `app.company_id` currently set (or, for the
+   * System Admin's own `company_id IS NULL` rows, `app.is_system_context`).
+   * There is no "all tenants" value, by design, so a cross-tenant sweep is
+   * a loop of correctly-scoped passes rather than one unscoped query.
+   * Re-setting `app.company_id` partway through a transaction is the same
+   * thing `users.service.ts` already does per request.
+   */
+  async sweepAbandonedAvatars(): Promise<SweepResult> {
+    const cutoff = new Date(
+      Date.now() - ABANDONED_UPLOAD_GRACE_HOURS * 60 * 60 * 1000,
+    );
+
+    // `Company` is one of Architecture §5's documented RLS exemptions, so
+    // this read needs no tenant scope — it is what establishes the scopes
+    // used below. `null` is appended for the System Admin's own avatars,
+    // which belong to no company and are invisible under every
+    // `app.company_id` value.
+    const companies = await prisma.company.findMany({ select: { id: true } });
+    const scopes: (string | null)[] = [...companies.map((c) => c.id), null];
+
+    // One transaction for the whole sweep, so the advisory lock below can
+    // be the transaction-scoped kind (`pg_try_advisory_xact_lock`) and get
+    // released on commit, rollback or a dropped connection alike, with no
+    // unlock path to forget. Architecture D-14 / §14 require the lock:
+    // during a deploy two replicas overlap, and this must not double-run.
+    const keysToDelete = await prisma.$transaction(async (tx) => {
+      const [{ locked }] = await tx.$queryRaw<[{ locked: boolean }]>`
+        SELECT pg_try_advisory_xact_lock(hashtext(${SWEEP_LOCK_NAME})) AS locked
+      `;
+      if (!locked) {
+        return null;
+      }
+
+      const collected: StoredObjectKeys[] = [];
+      for (const companyId of scopes) {
+        if (collected.length >= SWEEP_BATCH_LIMIT) {
+          break;
+        }
+        if (companyId) {
+          await tx.$executeRaw`SELECT set_config('app.company_id', ${companyId}, true)`;
+        } else {
+          await tx.$executeRaw`SELECT set_config('app.is_system_context', 'true', true)`;
+        }
+
+        const candidates = await tx.fileObject.findMany({
+          where: {
+            companyId,
+            kind: 'USER_AVATAR',
+            createdAt: { lt: cutoff },
+            // The back-side of `User.photoId`. Narrowing here rather than
+            // loading every old avatar and rejecting most of them in
+            // `deleteRowIfUnreferenced` keeps the scan proportional to the
+            // abandoned rows, not to the table.
+            user: null,
+          },
+          select: { id: true },
+          orderBy: { createdAt: 'asc' },
+          take: SWEEP_BATCH_LIMIT - collected.length,
+        });
+
+        for (const candidate of candidates) {
+          const keys = await this.deleteRowIfUnreferenced(tx, candidate.id);
+          if (keys) {
+            collected.push(keys);
+          }
+        }
+      }
+
+      return collected;
+    });
+
+    if (keysToDelete === null) {
+      return { skipped: true, deleted: 0 };
+    }
+
+    // Deliberately outside the transaction: unlike the replacement path
+    // (which has no commit hook to hang this on), a sweep owns its own
+    // transaction and can wait for the commit. Removing bytes only once
+    // the row removal is durable means a rollback can never strand a live
+    // row whose file is already gone.
+    for (const keys of keysToDelete) {
+      await this.deleteObjects(keys);
+    }
+
+    return { skipped: false, deleted: keysToDelete.length };
+  }
+
+  /**
+   * The row half of a deletion, shared by {@link deleteIfUnreferenced} and
+   * {@link sweepAbandonedAvatars}. Returns the storage keys that are now
+   * unreachable (so the caller can remove the bytes whenever it is safe to
+   * do so), or `null` when the row is gone or still referenced.
+   *
+   * The reference count is the whole safety of this: it covers two cases
+   * that look like a stale row but are not:
+   *  - re-uploading the identical image dedupes to the SAME row the user
+   *    already has (see {@link processAndStore}), so the "previous" id
+   *    handed in is sometimes the id that was just saved;
+   *  - a `SHOP_PHOTO` row can be referenced by several `ShopPhoto` rows.
+   */
+  private async deleteRowIfUnreferenced(
+    tx: FileCleanupTx,
+    fileId: string,
+  ): Promise<StoredObjectKeys | null> {
+    const file = await tx.fileObject.findUnique({
+      where: { id: fileId },
+      select: { storageKey: true, thumbKey: true },
+    });
+    if (!file) {
+      return null;
+    }
+
+    // Sequential, not `Promise.all`: an interactive Prisma transaction is
+    // one connection, and firing concurrent queries at it buys nothing.
+    const userRefs = await tx.user.count({ where: { photoId: fileId } });
+    if (userRefs > 0) {
+      return null;
+    }
+    const shopPhotoRefs = await tx.shopPhoto.count({ where: { fileId } });
+    if (shopPhotoRefs > 0) {
+      return null;
+    }
+
+    await tx.fileObject.delete({ where: { id: fileId } });
+    return file;
+  }
+
+  /**
+   * Bytes go after the row, never before, and a failure to remove them is
+   * logged rather than thrown. Both are the same judgement: the row is
+   * what makes a file reachable, so an orphaned object on the volume is
+   * harmless (and re-sweepable), whereas failing the caller's request —
+   * or rolling its transaction back onto a row whose bytes are already
+   * gone — would be a visibly broken photo for a real user.
+   */
+  private async deleteObjects(keys: StoredObjectKeys): Promise<void> {
+    await this.deleteObjectQuietly(keys.storageKey);
+    if (keys.thumbKey) {
+      await this.deleteObjectQuietly(keys.thumbKey);
+    }
+  }
+
+  /** See {@link deleteObjects} for why a failure here is swallowed. */
+  private async deleteObjectQuietly(key: string): Promise<void> {
+    try {
+      await this.storage.delete(key);
+    } catch (error) {
+      this.logger.warn(
+        `Could not remove photo object "${key}" from storage; the file_objects row is already gone, so this leaves an unreachable object behind: ${
+          error instanceof Error ? error.message : 'unknown error'
+        }`,
+      );
+    }
   }
 
   /**

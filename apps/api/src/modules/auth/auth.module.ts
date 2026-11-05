@@ -23,5 +23,11 @@ import { TokenService } from './token.service';
 @Module({
   controllers: [AuthController],
   providers: [AuthService, TokenService, LoginThrottlerGuard],
+  // `UsersModule` injects `TokenService` directly for `POST
+  // /users/:id/revoke-sessions` — the same in-process reuse `FilesModule`
+  // already provides `UsersModule` with for `signFileUrl()`, rather than a
+  // second copy of the refresh-token revocation logic. Only `TokenService`
+  // is exported: `AuthService` stays internal to this module.
+  exports: [TokenService],
 })
 export class AuthModule {}

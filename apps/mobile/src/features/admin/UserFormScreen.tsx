@@ -5,6 +5,7 @@ import type { RouteProp } from '@react-navigation/native';
 import { Controller, useForm } from 'react-hook-form';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Pressable,
   ScrollView,
@@ -17,6 +18,7 @@ import { launchImageLibrary } from 'react-native-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   createUserSchema,
+  setUserPasswordSchema,
   updateUserSchema,
   type TenantAssignableRoleKey,
   type UserStatus,
@@ -43,7 +45,9 @@ import { BG, BLUE, BORDER, DANGER, INK, LABEL, MUTED } from './adminDesign';
  * `docs/ui-design/Field_Sales_Beat_App.html` §4.11 for the create path —
  * there is no separate "edit user" board, so the edit path reuses the same
  * visual language (role cards, the Active checkbox for status) rather than
- * the old read-only text box / pill selector.
+ * the old read-only text box / pill selector. That reuse is what lets the
+ * edit path simply enable the role cards and the username input, which
+ * were previously rendered disabled with a "not editable here" caption.
  *
  * One field this screen has that §4.11's mock doesn't show at all: Mobile.
  * `contracts/users.md` requires it whenever `role != EMPLOYEE` (for that
@@ -283,18 +287,15 @@ function RoleCard({
   name,
   desc,
   selected,
-  disabled,
   onPress,
 }: {
   name: string;
   desc: string;
   selected: boolean;
-  disabled: boolean;
   onPress: () => void;
 }) {
   return (
     <Pressable
-      disabled={disabled}
       onPress={onPress}
       style={{
         flexDirection: 'row',
@@ -307,7 +308,6 @@ function RoleCard({
         backgroundColor: selected ? '#E3EBFC' : '#FFFFFF',
         borderWidth: selected ? 2 : 1.5,
         borderColor: selected ? BLUE : BORDER,
-        opacity: disabled && !selected ? 0.5 : 1,
       }}
       testID={`user-form-role-${name}`}
     >
@@ -360,6 +360,19 @@ export function UserFormScreen() {
     editingUser?.photoUrl ? resolveFileUrl(editingUser.photoUrl) : null,
   );
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [revoking, setRevoking] = useState(false);
+  /**
+   * The new-password field is plain `useState`, not part of `useForm`:
+   * it posts to its own endpoint (`POST /users/:id/password`) rather than
+   * riding along with "Save changes", so keeping it out of the form's
+   * values also keeps it out of `stripBlanks`' payload for `PATCH`.
+   */
+  const [newPassword, setNewPassword] = useState('');
+  const [newPasswordError, setNewPasswordError] = useState<string | null>(null);
+  const [settingPassword, setSettingPassword] = useState(false);
+  const [passwordDone, setPasswordDone] = useState(false);
+  /** `null` until the admin actually revokes, so the confirmation line only appears after the fact. */
+  const [revokedCount, setRevokedCount] = useState<number | null>(null);
 
   const {
     control,
@@ -392,7 +405,42 @@ export function UserFormScreen() {
   });
 
   const role = watch('role');
-  const showLoginFields = !isEditing && role !== 'EMPLOYEE';
+  const isEmployeeRole = role === 'EMPLOYEE';
+
+  /**
+   * Username and role are both editable (they were read-only captions
+   * before). The other two login fields are not, and the split is about
+   * what `updateUserSchema` actually accepts rather than about the layout:
+   * `PATCH /users/:id` takes `username` but has no `temporaryPassword`/
+   * `mobile`, so rendering those on the edit path would silently discard
+   * whatever was typed into them.
+   */
+  const showCredentialFields = !isEditing && !isEmployeeRole;
+
+  /**
+   * On create this follows the role, per FR-017. On edit it also stays
+   * visible for an EMPLOYEE who already has a stored username — demoting
+   * someone keeps their credentials dormant rather than clearing them, so
+   * hiding the field there would make an existing username look deleted.
+   */
+  const showUsernameField = isEditing
+    ? !isEmployeeRole || Boolean(editingUser?.username)
+    : !isEmployeeRole;
+
+  const roleChanged = Boolean(editingUser) && role !== editingUser?.role;
+  const demotingToEmployee = roleChanged && isEmployeeRole;
+  /**
+   * Promoting a user who has never had credentials at all. The role change
+   * on its own still doesn't let them sign in — they need a username (this
+   * screen's own field, saved with the role) and a password (the separate
+   * "Password" group below, which posts to its own endpoint). Called out
+   * explicitly rather than left to be discovered as a broken login.
+   */
+  const promotedWithoutLogin =
+    roleChanged &&
+    !isEmployeeRole &&
+    editingUser?.role === 'EMPLOYEE' &&
+    !editingUser?.username;
 
   async function pickAndUploadPhoto(): Promise<void> {
     const result = await launchImageLibrary({
@@ -433,6 +481,94 @@ export function UserFormScreen() {
       setSubmitError(errorMessageFor(error));
     } finally {
       setUploadingPhoto(false);
+    }
+  }
+
+  /**
+   * `POST /users/:id/revoke-sessions` — signs this user out everywhere
+   * (server-side: `tokenVersion` bump + every refresh token revoked).
+   *
+   * Confirmed first because it is not undoable and is felt immediately by
+   * someone else. The confirmation deliberately mentions the
+   * aim-at-yourself case rather than trying to detect it: `StoredSession`
+   * holds only the tokens and the role, not the signed-in user's id, so
+   * detecting it would mean decoding the access token's `sub` claim on the
+   * device just to vary one sentence.
+   */
+  function confirmRevokeSessions(): void {
+    if (!editingUser) {
+      return;
+    }
+    Alert.alert(
+      'Sign out of all devices?',
+      `${editingUser.name} will be signed out everywhere and will have to sign in again. If this is your own account, you'll be signed out too.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign out',
+          style: 'destructive',
+          onPress: () => {
+            void revokeSessions();
+          },
+        },
+      ],
+    );
+  }
+
+  async function revokeSessions(): Promise<void> {
+    if (!editingUser) {
+      return;
+    }
+    setSubmitError(null);
+    setRevoking(true);
+    try {
+      const result = await apiRequest<{ revokedSessions: number }>(
+        `/users/${editingUser.id}/revoke-sessions`,
+        { method: 'POST', idempotencyKey: generateIdempotencyKey() },
+      );
+      setRevokedCount(result.revokedSessions);
+    } catch (error) {
+      setSubmitError(errorMessageFor(error));
+    } finally {
+      setRevoking(false);
+    }
+  }
+
+  /**
+   * `POST /users/:id/password`. Validated against the shared
+   * `setUserPasswordSchema` so the admin sees the FR-013 policy message
+   * here rather than as a round-tripped 400, exactly as the create path
+   * leans on `createUserSchema`.
+   */
+  async function setPasswordForUser(): Promise<void> {
+    if (!editingUser) {
+      return;
+    }
+    setSubmitError(null);
+    setPasswordDone(false);
+
+    const parsed = setUserPasswordSchema.safeParse({ newPassword });
+    if (!parsed.success) {
+      setNewPasswordError(
+        parsed.error.issues[0]?.message ?? 'That password is not allowed.',
+      );
+      return;
+    }
+    setNewPasswordError(null);
+
+    setSettingPassword(true);
+    try {
+      await apiRequest(`/users/${editingUser.id}/password`, {
+        method: 'POST',
+        body: parsed.data,
+        idempotencyKey: generateIdempotencyKey(),
+      });
+      setNewPassword('');
+      setPasswordDone(true);
+    } catch (error) {
+      setSubmitError(errorMessageFor(error));
+    } finally {
+      setSettingPassword(false);
     }
   }
 
@@ -615,9 +751,9 @@ export function UserFormScreen() {
             />
           </View>
 
-          {showLoginFields ? (
-            <>
-              <View style={{ flexDirection: 'row', gap: 10 }}>
+          {showUsernameField || showCredentialFields ? (
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {showUsernameField ? (
                 <View style={{ flex: 1 }}>
                   <FieldLabel>Username</FieldLabel>
                   <Controller
@@ -636,6 +772,8 @@ export function UserFormScreen() {
                     )}
                   />
                 </View>
+              ) : null}
+              {showCredentialFields ? (
                 <View style={{ flex: 1 }}>
                   <FieldLabel>Temp password</FieldLabel>
                   <Controller
@@ -651,31 +789,34 @@ export function UserFormScreen() {
                     )}
                   />
                 </View>
-              </View>
-
-              <View>
-                <FieldLabel>Mobile</FieldLabel>
-                <Controller
-                  control={control}
-                  name="mobile"
-                  render={({ field: { onBlur, onChange, value } }) => (
-                    <TextInput
-                      keyboardType="phone-pad"
-                      onBlur={onBlur}
-                      onChangeText={onChange}
-                      style={INPUT_STYLE}
-                      testID="user-form-mobile"
-                      value={value}
-                    />
-                  )}
-                />
-              </View>
-            </>
+              ) : null}
+            </View>
           ) : null}
 
-          {isEditing && editingUser?.username ? (
-            <Text style={{ fontSize: 12, color: MUTED }}>
-              Username: {editingUser.username} (not editable here)
+          {showCredentialFields ? (
+            <View>
+              <FieldLabel>Mobile</FieldLabel>
+              <Controller
+                control={control}
+                name="mobile"
+                render={({ field: { onBlur, onChange, value } }) => (
+                  <TextInput
+                    keyboardType="phone-pad"
+                    onBlur={onBlur}
+                    onChangeText={onChange}
+                    style={INPUT_STYLE}
+                    testID="user-form-mobile"
+                    value={value}
+                  />
+                )}
+              />
+            </View>
+          ) : null}
+
+          {isEditing && showUsernameField ? (
+            <Text style={{ fontSize: 12, color: MUTED, lineHeight: 17 }}>
+              Changing the username changes what this person signs in with —
+              their password is unaffected.
             </Text>
           ) : null}
 
@@ -697,7 +838,6 @@ export function UserFormScreen() {
                 {ROLE_OPTIONS.map((option) => (
                   <RoleCard
                     desc={option.desc}
-                    disabled={isEditing}
                     key={option.key}
                     name={option.name}
                     onPress={() => onChange(option.key)}
@@ -707,9 +847,30 @@ export function UserFormScreen() {
               </View>
             )}
           />
-          {isEditing ? (
-            <Text style={{ fontSize: 12, color: MUTED }}>
-              Role isn&apos;t editable here once a user is created.
+
+          {demotingToEmployee ? (
+            <Text style={{ fontSize: 12, color: MUTED, lineHeight: 17 }}>
+              Employees don&apos;t sign in, so saving this stops their login.
+              Their username and password are kept, so putting them back on
+              their old role later restores the same login.
+            </Text>
+          ) : null}
+
+          {promotedWithoutLogin ? (
+            <Text
+              style={{ fontSize: 12, color: DANGER, lineHeight: 17 }}
+              testID="user-form-role-no-login-warning"
+            >
+              This person has never had a login, so this role change alone
+              won&apos;t let them sign in — give them a username above, save,
+              then set a password under &ldquo;Password&rdquo;.
+            </Text>
+          ) : null}
+
+          {roleChanged ? (
+            <Text style={{ fontSize: 12, color: MUTED, lineHeight: 17 }}>
+              If they&apos;re signed in right now, the new role applies the next
+              time their session refreshes — within about 15 minutes.
             </Text>
           ) : null}
         </Group>
@@ -805,6 +966,126 @@ export function UserFormScreen() {
             exactly. Role and rate changes are recorded in the audit log.
           </Text>
         </Group>
+
+        {isEditing ? (
+          <Group>
+            <SectionLabel>Password</SectionLabel>
+            <Text style={{ fontSize: 12, color: MUTED, lineHeight: 17 }}>
+              Sets a new password for this person — use it when they&apos;re
+              locked out and can&apos;t complete the SMS reset themselves.
+              Saving it signs them out of all their devices.
+            </Text>
+
+            <View>
+              <FieldLabel>New password</FieldLabel>
+              <PasswordInput
+                onChangeText={(text) => {
+                  setNewPassword(text);
+                  setNewPasswordError(null);
+                  setPasswordDone(false);
+                }}
+                testID="user-form-new-password"
+                value={newPassword}
+              />
+              {newPasswordError ? (
+                <Text style={{ marginTop: 4, fontSize: 12, color: DANGER }}>
+                  {newPasswordError}
+                </Text>
+              ) : null}
+            </View>
+
+            <Pressable
+              disabled={settingPassword || newPassword.length === 0}
+              onPress={() => {
+                void setPasswordForUser();
+              }}
+              style={{
+                height: 48,
+                borderRadius: 12,
+                borderWidth: 1.5,
+                borderColor: BLUE,
+                backgroundColor: '#FFFFFF',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: settingPassword || newPassword.length === 0 ? 0.6 : 1,
+              }}
+              testID="user-form-set-password"
+            >
+              {settingPassword ? (
+                <ActivityIndicator color={BLUE} />
+              ) : (
+                <Text style={{ fontSize: 15, fontWeight: '700', color: BLUE }}>
+                  Set password
+                </Text>
+              )}
+            </Pressable>
+
+            {passwordDone ? (
+              <Text
+                style={{ fontSize: 12, color: MUTED, lineHeight: 17 }}
+                testID="user-form-set-password-result"
+              >
+                Password updated. Tell them the new password directly — it
+                isn&apos;t shown again, and they were signed out everywhere.
+              </Text>
+            ) : null}
+
+            {!editingUser?.username ? (
+              <Text style={{ fontSize: 12, color: DANGER, lineHeight: 17 }}>
+                This person has no username yet, so a password alone won&apos;t
+                let them sign in — give them one above and save first.
+              </Text>
+            ) : null}
+          </Group>
+        ) : null}
+
+        {isEditing ? (
+          <Group>
+            <SectionLabel>Sessions</SectionLabel>
+            <Text style={{ fontSize: 12, color: MUTED, lineHeight: 17 }}>
+              Signs this person out of every device they&apos;re currently
+              signed in on. Use it if a phone is lost or shared. It takes effect
+              at once and doesn&apos;t change their password.
+            </Text>
+            <Pressable
+              disabled={revoking}
+              onPress={confirmRevokeSessions}
+              style={{
+                height: 48,
+                borderRadius: 12,
+                borderWidth: 1.5,
+                borderColor: DANGER,
+                backgroundColor: '#FFFFFF',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: revoking ? 0.6 : 1,
+              }}
+              testID="user-form-revoke-sessions"
+            >
+              {revoking ? (
+                <ActivityIndicator color={DANGER} />
+              ) : (
+                <Text
+                  style={{ fontSize: 15, fontWeight: '700', color: DANGER }}
+                >
+                  Sign out of all devices
+                </Text>
+              )}
+            </Pressable>
+            {revokedCount !== null ? (
+              <Text
+                style={{ fontSize: 12, color: MUTED, lineHeight: 17 }}
+                testID="user-form-revoke-sessions-result"
+              >
+                {revokedCount === 0
+                  ? 'Done — they had no active sessions to sign out.'
+                  : `Done — signed out of ${revokedCount} ${
+                      revokedCount === 1 ? 'session' : 'sessions'
+                    }.`}
+              </Text>
+            ) : null}
+          </Group>
+        ) : null}
 
         {submitError ? (
           <Text

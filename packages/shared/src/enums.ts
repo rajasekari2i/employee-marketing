@@ -62,13 +62,21 @@ export const companyStatusSchema = z.enum([
 ]);
 
 /**
- * `apps/api/prisma/schema.prisma`'s `LocationSource` enum (002-shops-crud).
- * Deliberately missing the full architecture model's `GPS` variant — not
- * reachable from this feature (data-model.md Enums).
+ * `apps/api/prisma/schema.prisma`'s `LocationSource` enum — now complete.
+ *
+ * `GPS` was originally left out here (002-shops-crud: "not reachable from
+ * this feature"), then added to the Prisma enum by 006-visit-outcomes for
+ * the executive's first-visit pin capture, which had to declare its own
+ * inline copy of the three variants in `visits.schema.ts` because this one
+ * was short a value. Carrying all three makes this the single declaration
+ * both sides derive from again (Constitution rule 5), and is what lets the
+ * admin shop form offer "use my current location" alongside map search and
+ * a dragged pin.
  */
 export const LocationSource = {
   MAP_SEARCH: 'MAP_SEARCH',
   MANUAL_DRAG: 'MANUAL_DRAG',
+  GPS: 'GPS',
 } as const;
 
 export type LocationSource =
@@ -77,6 +85,7 @@ export type LocationSource =
 export const locationSourceSchema = z.enum([
   LocationSource.MAP_SEARCH,
   LocationSource.MANUAL_DRAG,
+  LocationSource.GPS,
 ]);
 
 /**
