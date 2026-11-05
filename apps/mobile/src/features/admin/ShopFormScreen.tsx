@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { RouteProp } from '@react-navigation/native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -598,6 +598,56 @@ export function ShopFormScreen() {
       }
     : DEFAULT_REGION;
 
+  /**
+   * A new shop opens on `DEFAULT_REGION` — the whole of India — which is
+   * useless to someone standing at the shop, and makes the map look broken
+   * rather than merely unset. So the view is moved to wherever the device
+   * is, once, on open.
+   *
+   * This moves the CAMERA only. It deliberately does NOT drop the pin:
+   * `POST /shops` auto-approves whatever location it is given with no
+   * accuracy gate, so an admin adding shops from the office would silently
+   * stamp the office's coordinates onto every one of them, and every future
+   * visit to those shops would then be measured against the wrong point.
+   * Setting the pin stays an explicit act — the button below the map.
+   *
+   * `'fast'` precision, not `'fresh'`: nothing is being saved, so a cached
+   * Wi-Fi fix positions the camera just as usefully as a GPS lock and
+   * returns in well under a second instead of up to 15 s.
+   *
+   * Failure is silent on purpose. The admin never asked for this, so there
+   * is nothing to apologise for — they are left on the country view with
+   * the search box and the button, exactly as before.
+   */
+  useEffect(() => {
+    // Only for a shop with no pin yet. An existing pin is the better
+    // centre, and `initialRegion` is already on it.
+    if (location) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const fix = await getCurrentPosition('fast');
+      if (cancelled || !fix.ok) {
+        return;
+      }
+      mapRef.current?.animateToRegion(
+        {
+          latitude: fix.position.latitude,
+          longitude: fix.position.longitude,
+          ...APPROVED_REGION_DELTA,
+        },
+        400,
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Once, on open. `location` is read above as a guard rather than a
+    // dependency: re-running this when the admin sets a pin would yank the
+    // camera back off the point they just chose.
+  }, []);
+
   return (
     <View style={{ flex: 1, backgroundColor: BG }}>
       <ScrollView
@@ -1072,55 +1122,56 @@ export function ShopFormScreen() {
               />
               {searching ? <ActivityIndicator size="small" /> : null}
             </View>
-            {/*
-              Board 4.9 has no locate control, so this takes the board's
-              OWN floating-control treatment — the same white, radius,
-              shadow and #5A6474 2px icon as the search bar directly above
-              it — rather than a style from somewhere else. Square at the
-              search bar's 40px height so the two read as siblings, with
-              `hitSlop` carrying the touch target to the 44px the rest of
-              this screen honours.
-            */}
-            <Pressable
-              accessibilityLabel="Use my current location"
-              accessibilityRole="button"
-              disabled={skip || locating}
-              hitSlop={8}
-              onPress={() => void useCurrentLocation()}
-              style={{
-                position: 'absolute',
-                right: 10,
-                bottom: 10,
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                backgroundColor: '#FFFFFF',
-                alignItems: 'center',
-                justifyContent: 'center',
-                shadowColor: '#141A26',
-                shadowOpacity: 0.12,
-                shadowRadius: 8,
-                shadowOffset: { width: 0, height: 2 },
-                elevation: 3,
-              }}
-              testID="shop-form-use-current-location"
-            >
-              {locating ? (
-                <ActivityIndicator size="small" />
-              ) : (
-                <OutlineIcon
-                  color={MUTED}
-                  shapes={ICON_LOCATE}
-                  size={18}
-                  strokeWidth={2}
-                />
-              )}
-            </Pressable>
           </View>
+          {/*
+            A labelled button under the map, not an icon floating on it.
+            The first attempt was the conventional crosshair overlay in the
+            map's corner; on a real build it went unfound — a 40px white
+            circle with a thin grey glyph reads as map chrome, not as a
+            control, and the native map surface is a bad neighbourhood for
+            a small sibling view. Board 4.9 has no locate control to copy,
+            so this borrows the board's OWN field treatment (`.inp`: 1.5px
+            #CBD2DD, radius 12, white) at button height rather than its
+            `.btn`, which is the blue Save shop button and must not have a
+            rival.
+          */}
+          <Pressable
+            accessibilityLabel="Use my current location"
+            accessibilityRole="button"
+            disabled={skip || locating}
+            onPress={() => void useCurrentLocation()}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              height: 48,
+              borderRadius: 12,
+              borderWidth: 1.5,
+              borderColor: '#CBD2DD',
+              backgroundColor: '#FFFFFF',
+              opacity: skip ? 0.5 : 1,
+            }}
+            testID="shop-form-use-current-location"
+          >
+            {locating ? (
+              <ActivityIndicator size="small" />
+            ) : (
+              <OutlineIcon
+                color={BLUE}
+                shapes={ICON_LOCATE}
+                size={18}
+                strokeWidth={2}
+              />
+            )}
+            <Text style={{ fontSize: 15, fontWeight: '600', color: INK }}>
+              {locating ? 'Getting your location…' : 'Use my current location'}
+            </Text>
+          </Pressable>
           <Text style={{ fontFamily: 'monospace', fontSize: 12, color: MUTED }}>
             {location
               ? `${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)} · source: ${SOURCE_LABEL[location.source]}${location.accuracyMeters !== null ? ` ±${location.accuracyMeters}m` : ''} · drag pin to adjust`
-              : 'Tap the map, search an address, or use the locate button to set a location'}
+              : 'Tap the map, search an address, or use the button above to set a location'}
           </Text>
           <Checkbox
             checked={skip}
