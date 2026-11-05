@@ -7,12 +7,14 @@ import {
   type ListUsersQuery,
   type RoleKey as RoleKeyType,
   type SalaryRateInput,
+  type SetUserPasswordInput,
   type UpdateUserInput,
   type UserStatus,
 } from '@field-sales/shared';
 
 import * as password from '../../infra/security/password';
 import type { TransactionClsStore } from '../../common/interceptors/transaction.interceptor';
+import { TokenService } from '../auth/token.service';
 import { FilesService } from '../files/files.service';
 
 /**
@@ -30,7 +32,16 @@ const prisma = new PrismaClient();
 /** The subset of the active transaction client this service needs. */
 type UsersTx = Pick<
   PrismaClient,
-  'user' | 'userSalaryRate' | 'role' | '$executeRaw'
+  | 'user'
+  | 'userSalaryRate'
+  | 'role'
+  | '$executeRaw'
+  // Not queried directly here — handed to `FilesService.deleteIfUnreferenced`
+  // (which needs both) so the replaced-photo cleanup runs inside THIS
+  // request's already-scoped transaction rather than a second one that
+  // would still see the pre-update `photoId`.
+  | 'fileObject'
+  | 'shopPhoto'
 >;
 
 export interface UserListItem {
@@ -50,6 +61,21 @@ export interface UserListItem {
 export interface UserListResult {
   items: UserListItem[];
   nextCursor: string | null;
+}
+
+/**
+ * Response shape shared by `POST /users/:id/revoke-sessions` and `POST
+ * /users/:id/password` (contracts/users.md) — setting a password ends every
+ * session too (FR-014), so both report the same thing.
+ */
+export interface RevokeSessionsResult {
+  /**
+   * How many still-active `RefreshToken` rows were revoked — i.e. roughly
+   * how many devices this signed out. "Roughly" because a device that
+   * never refreshed, or whose refresh token already expired, has no active
+   * row to count, so this is a floor rather than an exact device census.
+   */
+  revokedSessions: number;
 }
 
 /** The subset of a looked-up `User` row (+ its role key) {@link UsersService.toListItem} needs. */
@@ -93,6 +119,7 @@ export class UsersService {
   constructor(
     private readonly cls: ClsService<TransactionClsStore>,
     private readonly filesService: FilesService,
+    private readonly tokens: TokenService,
   ) {}
 
   /** The active request transaction, or the unextended fallback client (see class doc comment above for when that fallback would ever be used). */
@@ -184,17 +211,7 @@ export class UsersService {
   ): Promise<UserListItem> {
     const tx = await this.scopeToCaller(companyId);
 
-    const role = await tx.role.findUnique({
-      where: { key: input.role },
-    });
-    if (!role) {
-      // Defensive only — `Role` is application-wide (roles.seed.ts),
-      // seeded once by prisma/seed.ts's ensureGlobalRoles(); this can only
-      // happen if that seed step was never run against this database.
-      throw new Error(
-        `Role "${input.role}" is not seeded — run \`prisma db seed\` against this database first.`,
-      );
-    }
+    const role = await this.requireSeededRole(tx, input.role);
 
     if (input.username) {
       const existing = await tx.user.findFirst({
@@ -276,6 +293,23 @@ export class UsersService {
    * tokens for that user stop passing `ActiveAccountGuard` immediately
    * (FR-019). The rate-change pair, if present, goes through
    * {@link applyRateChange} instead of a plain field update (DoD item 5).
+   *
+   * `role` and `username` are both patchable here. Two things that are
+   * deliberately NOT done when the role changes:
+   *
+   * - Credentials are left alone. Demoting someone to `EMPLOYEE` keeps
+   *   their `username`/`passwordHash` row intact but dormant, so restoring
+   *   their old role later gives back the login they already had instead
+   *   of forcing a fresh username + temporary password. Sign-in is what
+   *   enforces the demotion — `auth.service.ts` rejects an `EMPLOYEE` role
+   *   on `login`/`refresh`/`forgotPassword`/`verifyOtp` regardless of a
+   *   stored hash — so a dormant credential is never a usable one.
+   * - `tokenVersion` is NOT bumped. The caller's `role` and `permissions`
+   *   are claims inside their 15-minute access token, so a role change
+   *   only takes effect for that user on their next token refresh. This is
+   *   a deliberate product decision, not an oversight; bumping
+   *   `tokenVersion` here (one line, mirroring the `becomingInactive`
+   *   branch below) is what would make it immediate.
    */
   async update(
     companyId: string,
@@ -287,7 +321,9 @@ export class UsersService {
 
     const existing = await tx.user.findFirst({
       where: { id, companyId },
-      select: { id: true, status: true },
+      // `photoId` is read only to clean up after a photo REPLACEMENT below
+      // — see the `deleteIfUnreferenced` call at the end of this method.
+      select: { id: true, status: true, photoId: true },
     });
     if (!existing) {
       throw new AppError('NOT_FOUND', `User "${id}" was not found.`);
@@ -296,11 +332,39 @@ export class UsersService {
     const becomingInactive =
       input.status === 'INACTIVE' && existing.status !== 'INACTIVE';
 
+    const roleId = input.role
+      ? (await this.requireSeededRole(tx, input.role)).id
+      : undefined;
+
+    // Same application-level `(companyId, lower(username))` check `create()`
+    // runs (gap #4 — there is no DB unique index backing it), with the one
+    // difference that this row must be excluded from its own collision
+    // check: re-saving the form without touching the username field sends
+    // the current username back unchanged, and `id: { not: id }` is what
+    // keeps that from reporting the user as a duplicate of themself.
+    if (input.username) {
+      const collision = await tx.user.findFirst({
+        where: {
+          companyId,
+          id: { not: id },
+          username: { equals: input.username, mode: 'insensitive' },
+        },
+      });
+      if (collision) {
+        throw new AppError(
+          'USERNAME_TAKEN',
+          `Username "${input.username}" is already in use in this company.`,
+        );
+      }
+    }
+
     const updated = await tx.user.update({
       where: { id },
       data: {
         name: input.name,
         email: input.email,
+        roleId,
+        username: input.username,
         status: input.status,
         photoId: input.photoFileId,
         monthlySalary: input.monthlySalary,
@@ -327,6 +391,19 @@ export class UsersService {
         input.halfDayRate,
         input.rateEffectiveFrom,
       );
+    }
+
+    // A profile photo is replaced, not versioned: once `photoId` points at
+    // the newly uploaded file, the one it used to point at is nobody's
+    // photo any more and should not linger in `file_objects`. Guarded on
+    // `input.photoFileId` because an absent field means "leave the photo
+    // alone" (Prisma reads the `undefined` above as no-change), not "clear
+    // it" — only a request that actually supplied a new photo has replaced
+    // anything. Left until last on purpose: it removes bytes from storage,
+    // which no transaction rollback can put back, so it runs after every
+    // step that could still fail.
+    if (input.photoFileId && existing.photoId) {
+      await this.filesService.deleteIfUnreferenced(tx, existing.photoId);
     }
 
     return this.toListItem(tx, companyId, callerId, updated, false);
@@ -371,6 +448,124 @@ export class UsersService {
   }
 
   /**
+   * `POST /users/:id/revoke-sessions` — signs the target user out of every
+   * device they are currently signed in on.
+   *
+   * Both halves are needed, and neither alone is sufficient:
+   *
+   * - `tokenVersion` bump stops every **access** token already in that
+   *   user's hands. `ActiveAccountGuard` compares the token's `ver` claim
+   *   against this column, so the bump takes effect on their very next
+   *   request rather than up to 15 minutes later when the token expires.
+   * - `revokeAllRefreshTokens` stops every **refresh** token, which the
+   *   `tokenVersion` bump on its own would not: an un-revoked refresh
+   *   token would simply mint a new access token carrying the new `ver`,
+   *   and the "logout" would last one round trip.
+   *
+   * Ordering mirrors `AuthService.resetPassword()`/`changePassword()`: the
+   * column bump goes through the request's tenant-scoped transaction (so a
+   * cross-tenant `:id` is invisible, as everywhere else here), and the
+   * refresh-token sweep runs after it on `TokenService`'s own client —
+   * `RefreshToken` carries no `companyId` and is not a tenant-scoped
+   * table. That sweep is therefore outside this request's transaction, so
+   * a later rollback would leave the tokens revoked but the `tokenVersion`
+   * unchanged. That is the safe direction to fail in: the user is signed
+   * out and has to sign in again, which is what was asked for anyway.
+   *
+   * Nothing stops a Company Admin aiming this at their own id — the result
+   * is simply that they are signed out too, on this device along with the
+   * rest. The mobile screen says so before asking them to confirm.
+   */
+  async revokeSessions(
+    companyId: string,
+    id: string,
+  ): Promise<RevokeSessionsResult> {
+    const tx = await this.scopeToCaller(companyId);
+    await this.requireUser(tx, companyId, id);
+
+    return { revokedSessions: await this.endAllSessions(tx, id) };
+  }
+
+  /**
+   * `POST /users/:id/password` — a Company Admin setting another user's
+   * password, for the two cases the app otherwise has no answer for: a
+   * user promoted out of `EMPLOYEE` who has never had one, and anyone
+   * locked out who cannot complete the SMS OTP reset themselves.
+   *
+   * Every active session ends, via the same {@link endAllSessions} the
+   * revoke-sessions route uses. That is FR-014 ("completing a password
+   * reset or change MUST end every other active session"), which does not
+   * distinguish who performed the change — and it is the behaviour that
+   * makes this safe to use on a lost or shared device, since the old
+   * password's sessions do not outlive it.
+   *
+   * Deliberately allowed even when the target's role is `EMPLOYEE`: a
+   * stored credential on an `EMPLOYEE` row is dormant, never usable (see
+   * `auth.service.ts`'s `roleCanSignIn`), so this is harmless there and
+   * refusing it would force role and password to be set in one specific
+   * order when promoting someone.
+   *
+   * No `currentPassword` is required — the admin is not the account
+   * holder and has no way to know it. `@Roles('COMPANY_ADMIN')` on the
+   * controller plus the tenant-scoped lookup is the whole authorisation
+   * story, and `@Audited('user.password.set')` records who did it.
+   */
+  async setPassword(
+    companyId: string,
+    id: string,
+    input: SetUserPasswordInput,
+  ): Promise<RevokeSessionsResult> {
+    const tx = await this.scopeToCaller(companyId);
+    await this.requireUser(tx, companyId, id);
+
+    const passwordHash = await password.hash(input.newPassword);
+
+    return {
+      revokedSessions: await this.endAllSessions(tx, id, { passwordHash }),
+    };
+  }
+
+  /** Tenant-scoped existence check — a cross-tenant `:id` is `404`, never `403`, as everywhere else here. */
+  private async requireUser(
+    tx: UsersTx,
+    companyId: string,
+    id: string,
+  ): Promise<void> {
+    const existing = await tx.user.findFirst({
+      where: { id, companyId },
+      select: { id: true },
+    });
+    if (!existing) {
+      throw new AppError('NOT_FOUND', `User "${id}" was not found.`);
+    }
+  }
+
+  /**
+   * Ends every session `userId` currently holds and returns how many
+   * refresh tokens that revoked. Shared by {@link revokeSessions} and
+   * {@link setPassword}; `alsoSet` is how the latter folds the new
+   * `passwordHash` into the very same `UPDATE` as the `tokenVersion` bump,
+   * so there is no window in which the password has changed but the old
+   * access tokens still pass.
+   *
+   * See {@link revokeSessions}'s doc comment for why both halves are
+   * needed and why the refresh-token sweep runs outside this request's
+   * transaction.
+   */
+  private async endAllSessions(
+    tx: UsersTx,
+    userId: string,
+    alsoSet: Prisma.UserUpdateInput = {},
+  ): Promise<number> {
+    await tx.user.update({
+      where: { id: userId },
+      data: { ...alsoSet, tokenVersion: { increment: 1 } },
+    });
+
+    return this.tokens.revokeAllRefreshTokens(userId);
+  }
+
+  /**
    * FR-020 / data-model.md's `UserSalaryRate` rule (DoD item 5): never
    * edits the existing open-ended row — sets its `effectiveTo = new row's
    * effectiveFrom − 1 day` and inserts a new row with `effectiveTo: null`.
@@ -412,6 +607,29 @@ export class UsersService {
         createdByUserId: callerId,
       },
     });
+  }
+
+  /**
+   * Resolves a `RoleKey` to its application-wide `Role` row. Shared by
+   * `create()` (the new user's role) and `update()` (a role change).
+   *
+   * A miss is `throw new Error`, not an `AppError`: `role` is already
+   * constrained to `tenantAssignableRoleKeySchema` by the time it reaches
+   * here, so an unseeded key is a deployment fault (a database that never
+   * had `prisma db seed` run against it), not anything the caller can fix
+   * by changing their request.
+   */
+  private async requireSeededRole(
+    tx: UsersTx,
+    key: CreateUserInput['role'],
+  ): Promise<{ id: string; key: RoleKeyType }> {
+    const role = await tx.role.findUnique({ where: { key } });
+    if (!role) {
+      throw new Error(
+        `Role "${key}" is not seeded — run \`prisma db seed\` against this database first.`,
+      );
+    }
+    return { id: role.id, key: role.key };
   }
 
   /** `rateEffectiveFrom`/dates are plain `YYYY-MM-DD` strings (contracts/users.md) — parsed as UTC midnight so the `@db.Date` column stores the calendar date the caller meant, not a timezone-shifted neighbour. */

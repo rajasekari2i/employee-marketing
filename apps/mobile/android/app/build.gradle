@@ -41,7 +41,13 @@ react {
     //   The entry file for bundle generation. Default is 'index.android.js' or 'index.js',
     //   which doesn't match this project's `index.ts` — set explicitly so release bundling
     //   (e.g. `assembleSrtRelease`) can find it.
-    entryFile = file("../index.ts")
+    // Relative to THIS file's project dir (android/app), so the JS entry at
+    // apps/mobile/index.ts is two levels up. "../index.ts" pointed at
+    // android/index.ts, which does not exist — release builds failed at
+    // createBundle<Flavor>ReleaseJsAndAssets. Debug builds never caught it:
+    // debuggableVariants below excludes them from bundling (Metro serves the
+    // JS instead), so this path is only ever read by a release build.
+    entryFile = file("../../index.ts")
     //
     //   A list of extra flags to pass to the 'bundle' commands.
     //   See https://github.com/react-native-community/cli/blob/main/docs/commands.md#bundle
@@ -75,6 +81,62 @@ def enableProguardInReleaseBuilds = false
  * this variant is about 6MiB larger per architecture than default.
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
+
+/**
+ * Release-signing credentials. The keystore and its passwords are NEVER in
+ * this repository — not the file, not the passwords, not an encrypted copy.
+ * They are read from the environment, or from the developer's own
+ * ~/.gradle/gradle.properties (which is outside any checkout).
+ *
+ * A real environment variable wins over a Gradle property, matching the
+ * precedence used everywhere else in this repo (see
+ * apps/api/scripts/prepare-dev-db.sh and prisma.config.ts) — so CI can
+ * override a developer machine's local defaults without editing anything.
+ */
+def signingSecret = { String name ->
+    def fromEnv = System.getenv(name)
+    if (fromEnv != null && !fromEnv.trim().isEmpty()) {
+        return fromEnv.trim()
+    }
+    def fromProperty = project.findProperty(name)
+    if (fromProperty != null && !fromProperty.toString().trim().isEmpty()) {
+        return fromProperty.toString().trim()
+    }
+    return null
+}
+
+def releaseStoreFile = signingSecret("FIELDSALES_UPLOAD_STORE_FILE")
+def releaseStorePassword = signingSecret("FIELDSALES_UPLOAD_STORE_PASSWORD")
+def releaseKeyAlias = signingSecret("FIELDSALES_UPLOAD_KEY_ALIAS")
+def releaseKeyPassword = signingSecret("FIELDSALES_UPLOAD_KEY_PASSWORD")
+
+// All four or none: a partial set is a configuration mistake, and treating
+// it as "no keystore" would quietly fall back to debug signing — the exact
+// failure this whole block exists to prevent. The keystore file is checked
+// for existence here too, so a stale path fails while the message can still
+// say which path, rather than inside Gradle's signing task.
+def releaseSigningAvailable = false
+if (releaseStoreFile != null || releaseStorePassword != null ||
+        releaseKeyAlias != null || releaseKeyPassword != null) {
+    def missing = []
+    if (releaseStoreFile == null) missing << "FIELDSALES_UPLOAD_STORE_FILE"
+    if (releaseStorePassword == null) missing << "FIELDSALES_UPLOAD_STORE_PASSWORD"
+    if (releaseKeyAlias == null) missing << "FIELDSALES_UPLOAD_KEY_ALIAS"
+    if (releaseKeyPassword == null) missing << "FIELDSALES_UPLOAD_KEY_PASSWORD"
+    if (!missing.isEmpty()) {
+        throw new GradleException(
+            "Release signing is partially configured — missing: ${missing.join(', ')}.\n" +
+            "Set all four, or none of them."
+        )
+    }
+    if (!file(releaseStoreFile).exists()) {
+        throw new GradleException(
+            "FIELDSALES_UPLOAD_STORE_FILE points at a keystore that does not exist:\n" +
+            "  ${file(releaseStoreFile).absolutePath}"
+        )
+    }
+    releaseSigningAvailable = true
+}
 
 android {
     ndkVersion rootProject.ext.ndkVersion
@@ -120,18 +182,106 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+
+        // Only declared when the credentials are actually available — see
+        // releaseSigningAvailable above. Declaring it unconditionally with
+        // null values makes Gradle fail at configuration time on every
+        // task, including `assembleDevDebug`.
+        if (releaseSigningAvailable) {
+            release {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            // The debug keystore is the fallback for `assembleDevRelease`
+            // ONLY — a developer smoke-testing a release build locally,
+            // where the signature is irrelevant because the APK never
+            // leaves the machine. Any other flavour's release build is
+            // refused outright rather than silently debug-signed; see the
+            // taskGraph check below for why that matters so much here.
+            signingConfig releaseSigningAvailable ? signingConfigs.release : signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
+    }
+}
+
+// Refuse to build a distributable, client-facing release with the debug
+// keystore.
+//
+// This used to be exactly what happened: `buildTypes.release` was wired to
+// `signingConfigs.debug` by the React Native template, under a comment
+// saying to replace it, and nothing enforced that anyone ever did. A
+// debug-signed APK installs and runs perfectly, so the mistake is invisible
+// until it is expensive:
+//
+//   - the debug keystore's password is the literal string "android",
+//     published in every Android tutorial, so anyone can re-sign and tamper
+//     with the APK and it still looks authentic;
+//   - Play Store rejects it outright;
+//   - worst, Android identifies an app by its SIGNATURE. Once a client has
+//     installed a debug-signed build, a later properly-signed update will
+//     NOT install over it — Android refuses on signature mismatch. The only
+//     path is uninstall-and-reinstall, which wipes the device's local data
+//     (the offline outbox included). That is unrecoverable after the fact,
+//     which is why this is a hard failure at build time rather than a
+//     warning in the log.
+//
+// `dev` is exempt: it is the local development flavour and its APK is not
+// handed to anyone.
+gradle.taskGraph.whenReady { graph ->
+    if (releaseSigningAvailable) {
+        return
+    }
+
+    // Derived from the declared flavours rather than pattern-matched, so a
+    // new company added to productFlavors is covered automatically and
+    // nothing else is. A plain regex over every task name is NOT good
+    // enough here: the graph is full of unrelated AGP-internal tasks ending
+    // in "Release" (bundleLibRuntimeToDirRelease and friends, one per
+    // dependency module), which a pattern happily matches and which made
+    // the failure message unreadable. Scoping to :app's own tasks is the
+    // other half of that — the same names exist in library subprojects.
+    def distributableTaskNames = android.productFlavors
+        .findAll { it.name != 'dev' }
+        .collectMany { flavor ->
+            def name = flavor.name.capitalize()
+            // .toString() is load-bearing: a GString never equals a String,
+            // so a list of them makes the contains() below silently always
+            // false and the guard never fires.
+            ["assemble${name}Release".toString(), "bundle${name}Release".toString()]
+        }
+
+    def distributable = graph.allTasks.findAll { task ->
+        task.project.path == ':app' && distributableTaskNames.contains(task.name)
+    }*.name.unique()
+
+    if (!distributable.isEmpty()) {
+        throw new GradleException(
+            "Refusing to build ${distributable.join(', ')} without a release keystore —\n" +
+            "it would be signed with the PUBLIC debug keystore and could never be updated\n" +
+            "in place on a client's device.\n\n" +
+            "Generate a keystore once, and keep it OUT of the repository:\n\n" +
+            "  keytool -genkeypair -v -storetype PKCS12 \\\n" +
+            "    -keystore ~/keystores/field-sales-release.keystore \\\n" +
+            "    -alias field-sales -keyalg RSA -keysize 2048 -validity 10000\n\n" +
+            "Then set these four, either as environment variables or in\n" +
+            "~/.gradle/gradle.properties (NOT this repo's gradle.properties):\n\n" +
+            "  FIELDSALES_UPLOAD_STORE_FILE=/home/you/keystores/field-sales-release.keystore\n" +
+            "  FIELDSALES_UPLOAD_STORE_PASSWORD=...\n" +
+            "  FIELDSALES_UPLOAD_KEY_ALIAS=field-sales\n" +
+            "  FIELDSALES_UPLOAD_KEY_PASSWORD=...\n\n" +
+            "Back that keystore up somewhere durable. Losing it means no existing\n" +
+            "installation can ever be updated again."
+        )
     }
 }
 

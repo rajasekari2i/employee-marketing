@@ -21,6 +21,8 @@
 
 import { z } from 'zod';
 
+import { locationSourceSchema } from './enums';
+
 /** The position reading every field command carries. */
 const positionFields = {
   latitude: z.number().min(-90).max(90),
@@ -147,7 +149,9 @@ export type SubmitVisitInput = z.infer<typeof submitVisitSchema>;
 export const capturePinSchema = z
   .object({
     ...positionFields,
-    source: z.enum(['GPS', 'MAP_SEARCH', 'MANUAL_DRAG']),
+    // The shared declaration, not a fourth inline copy of the same three
+    // variants — `enums.ts` carries `GPS` now (see its doc comment).
+    source: locationSourceSchema,
   })
   // See submitVisitSchema — unknown keys must be rejected, not stripped.
   .strict();

@@ -12,6 +12,14 @@ node_modules/
 **/android/.kotlin/
 *.keystore
 !debug.keystore
+# Release signing material. The build reads the keystore path and passwords
+# from the environment or ~/.gradle/gradle.properties (android/app/build.gradle),
+# so none of this should ever be inside a checkout — these patterns are the
+# backstop for when someone drops one here anyway. The root .gitignore's
+# `apps/mobile/*.jks` only matches the mobile root, not android/app/.
+*.jks
+keystore.properties
+signing.properties
 
 # Metro
 .metro-health-check*

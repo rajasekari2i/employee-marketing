@@ -1,5 +1,6 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ClsModule, ClsServiceManager } from 'nestjs-cls';
 import { LoggerModule } from 'nestjs-pino';
@@ -31,6 +32,7 @@ import { VisitsModule } from './modules/visits/visits.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { SalaryModule } from './modules/salary/salary.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
+import { JobsModule } from './modules/jobs/jobs.module';
 
 @Module({
   imports: [
@@ -73,6 +75,17 @@ import { AttendanceModule } from './modules/attendance/attendance.module';
     ReportsModule,
     SalaryModule,
     AttendanceModule,
+    // Architecture §14's scheduled jobs. Registered after the feature
+    // modules because every job is a thin schedule over work that lives in
+    // one of them — today only the abandoned-avatar sweep over
+    // `FilesService`.
+    JobsModule,
+    // Architecture D-14: `@nestjs/schedule` in a single API replica, with a
+    // Postgres advisory lock per job so the two replicas that overlap
+    // during a deploy cannot double-run one. The lock is taken inside each
+    // job's own transaction (see `FilesService.sweepAbandonedAvatars`), not
+    // here — this registration only installs the scheduler registry.
+    ScheduleModule.forRoot(),
     // Establishes one AsyncLocalStorage-backed context per request so the
     // tenant isolation layer (Architecture §5 / CLAUDE.md Constitution
     // rule 2) — the Prisma extension in src/infra/prisma/tenant.extension.ts

@@ -62,6 +62,7 @@ export {
   tenantAssignableRoleKeySchema,
   createUserSchema,
   updateUserSchema,
+  setUserPasswordSchema,
   salaryRateSchema,
   listUsersQuerySchema,
 } from './users.schema';
@@ -69,6 +70,7 @@ export type {
   TenantAssignableRoleKey,
   CreateUserInput,
   UpdateUserInput,
+  SetUserPasswordInput,
   SalaryRateInput,
   ListUsersQuery,
 } from './users.schema';

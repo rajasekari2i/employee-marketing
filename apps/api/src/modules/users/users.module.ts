@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { AuthModule } from '../auth/auth.module';
 import { FilesModule } from '../files/files.module';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
@@ -11,7 +12,10 @@ import { UsersService } from './users.service';
  * same in-process reuse `FilesModule`'s own doc comment anticipated).
  */
 @Module({
-  imports: [FilesModule],
+  // `AuthModule` for its exported `TokenService` (`POST
+  // /users/:id/revoke-sessions`). No cycle: `AuthModule` does not import
+  // this module.
+  imports: [AuthModule, FilesModule],
   controllers: [UsersController],
   providers: [UsersService],
 })

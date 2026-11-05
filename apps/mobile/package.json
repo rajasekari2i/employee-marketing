@@ -11,6 +11,9 @@
     "start": "react-native start",
     "android": "react-native run-android --mode devDebug --appIdSuffix dev",
     "android:srt": "react-native run-android --mode srtDebug --appIdSuffix srt",
+    "build:apk:dev": "cd android && ENVFILE=.env.dev ./gradlew assembleDevRelease",
+    "build:apk:srt": "cd android && ENVFILE=.env.srt ./gradlew assembleSrtRelease",
+    "build:apk:clean": "cd android && ./gradlew clean",
     "lint": "eslint ."
   },
   "dependencies": {
@@ -26,15 +29,19 @@
     "react-hook-form": "^7.89.0",
     "react-native": "0.87.1",
     "react-native-config": "^1.7.2",
+    "react-native-css-interop": "^0.2.7",
     "react-native-image-picker": "^8.2.1",
     "react-native-keychain": "^10.0.0",
     "react-native-maps": "^1.29.11",
+    "react-native-reanimated": "^4.7.0",
     "react-native-safe-area-context": "^5.10.1",
     "react-native-screens": "^4.28.0",
-    "react-native-svg": "^15.15.5"
+    "react-native-svg": "^15.15.5",
+    "react-native-worklets": "^0.13.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
+    "@babel/plugin-transform-react-jsx": "^7.29.7",
     "@babel/preset-env": "^7.25.3",
     "@babel/runtime": "^7.25.0",
     "@field-sales/config": "workspace:*",
@@ -46,6 +53,7 @@
     "@react-native/metro-config": "0.87.1",
     "@types/react": "^19.2.0",
     "eslint": "^9.18.0",
+    "hermes-compiler": "^250829098.0.17",
     "tailwindcss": "^3.4.19",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.20.0"

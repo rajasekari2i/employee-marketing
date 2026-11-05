@@ -32,6 +32,7 @@ import {
   type IconShape,
 } from '../../components/icons/OutlineIcon';
 import { GOOGLE_MAPS_API_KEY } from '../../config';
+import { getCurrentPosition, locationFailureMessage } from '../../lib/location';
 import {
   cameraPermissionMessage,
   ensureCameraPermission,
@@ -52,11 +53,14 @@ import type { ShopSummaryForEdit } from './ShopsListScreen';
  * happens from the beat plan's own form — tapping it explains why rather
  * than opening a selector.
  *
- * Location is a real `react-native-maps` `MapView` (research.md §2): tap
- * or drag to place the pin, or search an address via the Google Geocoding
- * API using the same `GOOGLE_MAPS_API_KEY` the Android manifest already
- * carries. Map tiles won't render without a real key configured for the
- * active build flavor — the rest of this screen still works regardless.
+ * Location is a real `react-native-maps` `MapView` (research.md §2), with
+ * three ways to set the pin: tap or drag it, search an address via the
+ * Google Geocoding API using the same `GOOGLE_MAPS_API_KEY` the Android
+ * manifest already carries, or take the device's own position with the
+ * locate button on the map — for the admin standing in front of the shop,
+ * which is the case neither of the other two serves well. Map tiles won't
+ * render without a real key configured for the active build flavor; the
+ * rest of this screen, the locate button included, still works regardless.
  */
 
 type ShopFormNavigationProp = NativeStackNavigationProp<
@@ -70,6 +74,8 @@ interface LocationState {
   longitude: number;
   source: LocationSource;
   label: string | null;
+  /** Only a `GPS` point has one — a searched or dragged pin is as precise as the map, which has no error figure to report. */
+  accuracyMeters: number | null;
 }
 
 interface PendingPhoto {
@@ -106,6 +112,12 @@ const ICON_SEARCH: IconShape[] = [
   { circle: [11, 11, 7] },
   { d: 'M20 20l-4-4' },
 ];
+/** The conventional "my location" crosshair: ring, centre dot, four ticks. Board 4.9 has no such control, so this follows the board's icon system (24-unit box, 2px round-cap outline, #5A6474) rather than inventing a style. */
+const ICON_LOCATE: IconShape[] = [
+  { circle: [12, 12, 7] },
+  { circle: [12, 12, 2] },
+  { d: 'M12 1v3M12 20v3M1 12h3M20 12h3' },
+];
 
 /** Default map center when a shop has no pin yet and nothing has been searched/dragged — central India, a neutral country-level view. */
 const DEFAULT_REGION = {
@@ -116,6 +128,13 @@ const DEFAULT_REGION = {
 };
 
 const APPROVED_REGION_DELTA = { latitudeDelta: 0.01, longitudeDelta: 0.01 };
+
+/** Board 4.9's caption spells the source in plain words, not the enum. A lookup rather than a ternary: there are three sources now, and a ternary silently labelled anything that was not `MAP_SEARCH` as "manual drag". */
+const SOURCE_LABEL: Record<LocationSource, string> = {
+  MAP_SEARCH: 'map search',
+  MANUAL_DRAG: 'manual drag',
+  GPS: 'current location',
+};
 
 function errorMessageFor(error: unknown): string {
   if (error instanceof ApiError) {
@@ -285,12 +304,18 @@ export function ShopFormScreen() {
           longitude: editingShop.longitude,
           source: editingShop.locationSource ?? 'MANUAL_DRAG',
           label: null,
+          // A saved shop's accuracy is not carried on the list row, and it
+          // describes the reading that produced the pin rather than the pin
+          // itself — so there is nothing honest to show until this session
+          // takes its own fix.
+          accuracyMeters: null,
         }
       : null,
   );
   const [skip, setSkip] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searching, setSearching] = useState(false);
+  const [locating, setLocating] = useState(false);
 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -392,6 +417,7 @@ export function ShopFormScreen() {
         longitude: lng,
         source: 'MAP_SEARCH',
         label: first?.formatted_address ?? query,
+        accuracyMeters: null,
       });
       mapRef.current?.animateToRegion(
         { latitude: lat, longitude: lng, ...APPROVED_REGION_DELTA },
@@ -404,6 +430,60 @@ export function ShopFormScreen() {
     }
   }
 
+  /**
+   * The third way to set the pin, for the admin who is standing at the
+   * shop: take the device's own position instead of describing it.
+   *
+   * `'fresh'` precision, the same mode the executive's pin-capture screen
+   * uses, and for a stronger reason. `POST /shops` AUTO-APPROVES whatever
+   * location it is given (`shops.service.ts`: "a direct capture here"),
+   * with no server-side accuracy gate to catch a bad one — so a 500 m
+   * cell-tower fix saved here would silently become the fixed point every
+   * future visit to this shop is measured against. `'fresh'` refuses a
+   * cached reading and does not fall back to a coarse provider: it either
+   * gets a real GPS fix or says it could not, which is the honest answer
+   * when there is nothing downstream to catch the difference.
+   *
+   * The reading's accuracy is shown in the caption rather than enforced
+   * here. Nothing in the contract gates it on this endpoint, and inventing
+   * a client-only threshold would be a rule the server does not share —
+   * the admin can see the figure and drag the pin if it looks wrong.
+   */
+  async function useCurrentLocation(): Promise<void> {
+    setLocating(true);
+    try {
+      const fix = await getCurrentPosition('fresh');
+      if (!fix.ok) {
+        Alert.alert(
+          'Location unavailable',
+          locationFailureMessage(fix.failure, 'the locate button'),
+        );
+        return;
+      }
+      setSkip(false);
+      setLocation({
+        latitude: fix.position.latitude,
+        longitude: fix.position.longitude,
+        source: 'GPS',
+        // The searched address, if there was one, described a different
+        // point — keeping it next to these coordinates would caption the
+        // pin with somewhere it no longer is.
+        label: null,
+        accuracyMeters: fix.position.accuracyMeters,
+      });
+      mapRef.current?.animateToRegion(
+        {
+          latitude: fix.position.latitude,
+          longitude: fix.position.longitude,
+          ...APPROVED_REGION_DELTA,
+        },
+        400,
+      );
+    } finally {
+      setLocating(false);
+    }
+  }
+
   function onMapInteraction(latitude: number, longitude: number): void {
     setSkip(false);
     setLocation((prev) => ({
@@ -411,6 +491,10 @@ export function ShopFormScreen() {
       longitude,
       source: 'MANUAL_DRAG',
       label: prev?.label ?? null,
+      // Dropped deliberately: a hand-placed point has no measurement error
+      // to report, and carrying the last GPS reading's figure over would
+      // attach it to coordinates it never described.
+      accuracyMeters: null,
     }));
   }
 
@@ -988,11 +1072,55 @@ export function ShopFormScreen() {
               />
               {searching ? <ActivityIndicator size="small" /> : null}
             </View>
+            {/*
+              Board 4.9 has no locate control, so this takes the board's
+              OWN floating-control treatment — the same white, radius,
+              shadow and #5A6474 2px icon as the search bar directly above
+              it — rather than a style from somewhere else. Square at the
+              search bar's 40px height so the two read as siblings, with
+              `hitSlop` carrying the touch target to the 44px the rest of
+              this screen honours.
+            */}
+            <Pressable
+              accessibilityLabel="Use my current location"
+              accessibilityRole="button"
+              disabled={skip || locating}
+              hitSlop={8}
+              onPress={() => void useCurrentLocation()}
+              style={{
+                position: 'absolute',
+                right: 10,
+                bottom: 10,
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                backgroundColor: '#FFFFFF',
+                alignItems: 'center',
+                justifyContent: 'center',
+                shadowColor: '#141A26',
+                shadowOpacity: 0.12,
+                shadowRadius: 8,
+                shadowOffset: { width: 0, height: 2 },
+                elevation: 3,
+              }}
+              testID="shop-form-use-current-location"
+            >
+              {locating ? (
+                <ActivityIndicator size="small" />
+              ) : (
+                <OutlineIcon
+                  color={MUTED}
+                  shapes={ICON_LOCATE}
+                  size={18}
+                  strokeWidth={2}
+                />
+              )}
+            </Pressable>
           </View>
           <Text style={{ fontFamily: 'monospace', fontSize: 12, color: MUTED }}>
             {location
-              ? `${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)} · source: ${location.source === 'MAP_SEARCH' ? 'map search' : 'manual drag'} · drag pin to adjust`
-              : 'Tap the map or search an address to set a location'}
+              ? `${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)} · source: ${SOURCE_LABEL[location.source]}${location.accuracyMeters !== null ? ` ±${location.accuracyMeters}m` : ''} · drag pin to adjust`
+              : 'Tap the map, search an address, or use the locate button to set a location'}
           </Text>
           <Checkbox
             checked={skip}
