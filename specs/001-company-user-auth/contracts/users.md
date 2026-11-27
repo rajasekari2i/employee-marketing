@@ -16,6 +16,7 @@ Base path `/api/v1/users`. Company Admin only, tenant-scoped (the Prisma extensi
     id: string; name: string; role: RoleKey; status: UserStatus;
     username: string | null;      // null for EMPLOYEE
     email: string | null;
+    personalIdentity: string | null;  // Aadhaar, 12 bare digits
     monthlySalary: string | null; // decimal as string
     halfDayRate: string | null;   // current (open-ended) rate, decimal as string
     rateEffectiveFrom: string | null; // that rate's effective-from date, ISO "YYYY-MM-DD"; null iff halfDayRate is
@@ -32,18 +33,19 @@ Requires `Idempotency-Key`.
 **Request**
 ```ts
 {
-  name: string;
-  email?: string;
+  name: string;                         // letters, spaces, . ' - only
+  email?: string;                       // a real email address
+  personalIdentity?: string;            // Aadhaar: 12 digits, first 2-9; "1234 5678 9012" accepted, stored "123456789012"
   role: "COMPANY_ADMIN" | "MANAGER" | "MARKETING_EXECUTIVE" | "EMPLOYEE";
   status?: "ACTIVE" | "INACTIVE";       // default ACTIVE
   photoFileId?: string;                 // from a prior POST /me/photo-style upload, see files.md
-  monthlySalary?: string;               // decimal as string
-  halfDayRate?: string;                 // decimal as string
-  rateEffectiveFrom?: string;           // ISO date, required if halfDayRate is present
+  monthlySalary?: string;               // decimal as string, digits + at most 2dp
+  halfDayRate?: string;                 // decimal as string, digits + at most 2dp
+  rateEffectiveFrom?: string;           // real calendar date "YYYY-MM-DD", required if halfDayRate is present
   // required only when role != "EMPLOYEE" (FR-017):
-  username?: string;
+  username?: string;                    // 3-20 chars, see Field formats below
   temporaryPassword?: string;
-  mobile?: string;                      // required when role != EMPLOYEE, for their own OTP resets
+  mobile?: string;                      // 10 digits, first 6-9; required when role != EMPLOYEE, for their own OTP resets
 }
 ```
 
@@ -52,9 +54,36 @@ Server-side (never accepted from the client, per FR-025): `id`, `companyId`, `to
 **Response `201`**: the created user, same shape as one `GET /users` item.
 
 **Errors**:
-- `VALIDATION_FAILED` (400) — e.g. `username`/`temporaryPassword` missing for a non-Employee role, or present for an Employee role (FR-017); password fails the FR-013 policy.
+- `VALIDATION_FAILED` (400) — e.g. `username`/`temporaryPassword` missing for a non-Employee role, or present for an Employee role (FR-017); password fails the FR-013 policy; any of the field formats below. The `errors[]` array carries one `{ path, message }` per bad field, and `UserFormScreen` renders each `message` under its own input.
 - `USERNAME_TAKEN` (409) — duplicate within this company (FR-006, FR-018).
 - `IDEMPOTENCY_KEY_REUSED` (409).
+
+### Field formats
+
+Defined once in `packages/shared/src/field-formats.ts`, shared with
+`contracts/shops.md`'s table, and applied by `createUserSchema`,
+`updateUserSchema` and `salaryRateSchema` alike.
+
+| Field | Rule | Message on failure |
+| --- | --- | --- |
+| `name` | `^[A-Za-z][A-Za-z .'-]*$` — no digits, no other symbols; `.`/`'`/`-` allowed for initials and names like "K. Ramasamy". | Numbers and special characters are not allowed. |
+| `email` | A real address (Zod `.email()`); bare text is rejected. | Enter a valid email address, like name@example.com. |
+| `username` | 3-20 chars; `^[A-Za-z][A-Za-z0-9]*(?:[._-][A-Za-z0-9]+)*$` — starts with a letter, letters/digits/`._-` only, no spaces, never ends on a symbol, never two symbols in a row (`user..name` rejected). | Username must be between 3 and 20 characters. / Username must start with a letter and use only letters, numbers, . _ or - (no spaces, and not two symbols in a row). |
+| `personalIdentity` | `^[2-9][0-9]{3}\s?[0-9]{4}\s?[0-9]{4}$` — 12 digits, first 2-9 (UIDAI issues no number starting 0 or 1), no letters or symbols. **Normalised**: the 4-4-4 grouping the form shows is stripped, so "1234 5678 9012" is stored as "123456789012". Optional on every role. | Enter a 12-digit Aadhaar number (digits only, starting 2-9). |
+| `mobile` | `^[6-9][0-9]{9}$` — exactly 10 digits, no `+91`, no leading 0, no spaces or letters. | Enter a 10-digit Indian phone number starting with 6, 7, 8 or 9. |
+| `monthlySalary`, `halfDayRate` | `^\d{1,10}(\.\d{1,2})?$` — digits with at most 2 decimal places; no `₹`, separators, signs or letters. | Enter numbers only, with at most 2 decimal places. |
+| `rateEffectiveFrom` | `YYYY-MM-DD` **and a date that exists** — "2026-13-01" and "2025-02-29" are rejected, not just malformed shapes. | Enter a real date in YYYY-MM-DD format. |
+
+`personalIdentity` is a government identity number, so it is in
+`deep-redact.ts`'s `SENSITIVE_KEYS` (both spellings) and never reaches a log
+line, error payload or analytics event — Constitution rule 9. It is returned
+only by the Company-Admin-only `/users` routes; `/me` does not select the
+column. No Verhoeff check digit is verified — see the note in
+`field-formats.ts` for why, and what it would take to add.
+
+`username`'s rule governs what may be **minted**, not what may authenticate:
+`loginSchema` (`contracts/auth.md`) deliberately keeps `min(1).max(64)` so
+handles created before this rule can still sign in.
 
 ## `PATCH /users/:id` — Company Admin
 

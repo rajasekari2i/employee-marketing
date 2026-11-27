@@ -11,7 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { RoleKey, UserStatus } from '@field-sales/shared';
 
-import { apiRequest } from '../../api/client';
+import { apiRequest, resolveFileUrl } from '../../api/client';
 import { AccountMenu } from '../../components/AccountMenu';
 import { AdminBottomNav } from '../../components/AdminBottomNav';
 import {
@@ -58,6 +58,8 @@ interface MeResponse {
   companyId: string | null;
   status: UserStatus;
   photoUrl: string | null;
+  /** `?thumb=1` variant — what the 44px `AccountMenu` avatar renders. */
+  photoThumbUrl: string | null;
   permissions: string[];
   company: { code: string; name: string; timezone: string } | null;
 }
@@ -70,6 +72,9 @@ interface UsersListResponse {
 interface ShopsListResponse {
   items: Array<{ pinStatus: 'NONE' | 'APPROVED' }>;
   nextCursor: string | null;
+  /** Server-counted; see `shops.service.ts`'s `list`. */
+  total: number;
+  noPinTotal: number;
 }
 
 interface BeatPlansListResponse {
@@ -231,18 +236,16 @@ export function HomeScreen() {
         // Leave userCounts null — the tile falls back to a neutral subtitle.
       });
 
-    // Best-effort — the "Shops" tile's count, same posture as userCounts
-    // above (up to 100 shops, counted client-side, no dedicated count
-    // endpoint).
-    void apiRequest<ShopsListResponse>('/shops?limit=100')
+    // The "Shops" tile's count. `limit=1` because nothing here reads the
+    // rows — `GET /shops` now returns server-side `total`/`noPinTotal`, so
+    // this no longer fetches 100 shops to count them, and no longer reports
+    // "100 shops" for a company that has more.
+    void apiRequest<ShopsListResponse>('/shops?limit=1')
       .then((result) => {
         if (cancelled) {
           return;
         }
-        const withoutPin = result.items.filter(
-          (s) => s.pinStatus === 'NONE',
-        ).length;
-        setShopCounts({ total: result.items.length, withoutPin });
+        setShopCounts({ total: result.total, withoutPin: result.noPinTotal });
       })
       .catch(() => {
         // Leave shopCounts null — the tile falls back to a neutral subtitle.
@@ -397,6 +400,7 @@ export function HomeScreen() {
           name={me?.name}
           onLogoutPress={() => void handleLogout()}
           onProfilePress={() => navigation.navigate('Profile')}
+          photoUrl={me?.photoThumbUrl ? resolveFileUrl(me.photoThumbUrl) : null}
           roleLabel={me ? ROLE_LABELS[me.role] : ''}
           testIDPrefix="home"
         />

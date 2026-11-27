@@ -20,6 +20,11 @@ import {
   createUserSchema,
   setUserPasswordSchema,
   updateUserSchema,
+  AADHAAR_DIGIT_COUNT,
+  FIELD_FORMAT_MESSAGES,
+  FIELD_FORMAT_TESTS,
+  formatAadhaar,
+  USERNAME_MAX_LENGTH,
   type TenantAssignableRoleKey,
   type UserStatus,
 } from '@field-sales/shared';
@@ -101,6 +106,9 @@ const ROLE_OPTIONS: Array<{
   },
 ];
 
+/** 12 digits plus the two spaces `formatAadhaar` inserts — what the field can hold at most. */
+const AADHAAR_DISPLAY_LENGTH = AADHAAR_DIGIT_COUNT + 2;
+
 const ICON_CLOSE: IconShape[] = [{ d: 'M6 6l12 12M18 6L6 18' }];
 const ICON_BACK: IconShape[] = [{ d: 'M15 18l-6-6 6-6' }];
 const ICON_CAMERA: IconShape[] = [
@@ -117,6 +125,12 @@ interface UserFormValues {
   username: string;
   temporaryPassword: string;
   mobile: string;
+  /**
+   * Aadhaar, held in the GROUPED form the field displays
+   * ("1234 5678 9012"). `aadhaarSchema` strips the spaces on the way out,
+   * so the wire value is always 12 bare digits.
+   */
+  personalIdentity: string;
   monthlySalary: string;
   halfDayRate: string;
   rateEffectiveFrom: string;
@@ -156,6 +170,98 @@ function formatDate(date: Date): string {
 function parseDate(value: string): Date {
   const parsed = new Date(`${value}T00:00:00`);
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+/**
+ * The form fields that render a message line under their input, so a schema
+ * issue or API error naming one is actually SEEN when it is handed to
+ * `setError`.
+ *
+ * `role` and `status` are deliberately absent: they are pickers with no
+ * error slot, so routing a message to either would silently swallow it —
+ * those fall through to the single message under Save instead.
+ */
+const ERROR_RENDERING_FIELDS = {
+  name: true,
+  email: true,
+  username: true,
+  temporaryPassword: true,
+  mobile: true,
+  personalIdentity: true,
+  monthlySalary: true,
+  halfDayRate: true,
+  rateEffectiveFrom: true,
+} as const satisfies Partial<Record<keyof UserFormValues, true>>;
+
+/**
+ * `react-hook-form` `rules.validate` functions built on the same
+ * `FIELD_FORMAT_TESTS` the shared Zod schemas are built from
+ * (`packages/shared/src/field-formats.ts`), so what this form accepts and
+ * what `POST /users` accepts cannot drift apart (Constitution rule 5).
+ *
+ * Each returns `true` when valid, or the message to show. A blank value is
+ * always `true` here: whether a field is REQUIRED is a separate concern,
+ * owned by `rules.required` where it is unconditional and by
+ * `createUserSchema`'s role-dependent `.superRefine()` where it is not.
+ */
+const VALIDATE = {
+  name: (value: string): true | string =>
+    !value.trim() || FIELD_FORMAT_TESTS.personName(value.trim())
+      ? true
+      : FIELD_FORMAT_MESSAGES.personName,
+  email: (value: string): true | string =>
+    !value.trim() || FIELD_FORMAT_TESTS.email(value.trim())
+      ? true
+      : FIELD_FORMAT_MESSAGES.email,
+  username: (value: string): true | string => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return true;
+    }
+    // Length first: "ab" fails both rules, and "too short" is the more
+    // useful of the two things to be told about it.
+    if (!FIELD_FORMAT_TESTS.usernameLength(trimmed)) {
+      return FIELD_FORMAT_MESSAGES.usernameLength;
+    }
+    return FIELD_FORMAT_TESTS.usernameFormat(trimmed)
+      ? true
+      : FIELD_FORMAT_MESSAGES.usernameFormat;
+  },
+  mobile: (value: string): true | string =>
+    !value.trim() || FIELD_FORMAT_TESTS.phone(value.trim())
+      ? true
+      : FIELD_FORMAT_MESSAGES.phone,
+  aadhaar: (value: string): true | string =>
+    !value.trim() || FIELD_FORMAT_TESTS.aadhaar(value.trim())
+      ? true
+      : FIELD_FORMAT_MESSAGES.aadhaar,
+  amount: (value: string): true | string =>
+    !value.trim() || FIELD_FORMAT_TESTS.amount(value.trim())
+      ? true
+      : FIELD_FORMAT_MESSAGES.amount,
+  isoDate: (value: string): true | string =>
+    !value.trim() || FIELD_FORMAT_TESTS.isoDate(value.trim())
+      ? true
+      : FIELD_FORMAT_MESSAGES.isoDate,
+} as const;
+
+/** The red-bordered variant of `INPUT_STYLE` an invalid field wears. */
+function inputStyleFor(hasError: boolean) {
+  return hasError
+    ? [INPUT_STYLE, { borderColor: DANGER }]
+    : (INPUT_STYLE as object);
+}
+
+/** The message line under an input — matches the one `errors.name` already renders. */
+function FieldError({ children }: { children?: string }) {
+  if (!children) {
+    return null;
+  }
+  return (
+    <Text style={{ marginTop: 4, fontSize: 12, color: DANGER }}>
+      {children}
+    </Text>
+  );
 }
 
 /** Maps a failed submit to a short, readable message — same posture as `SignInScreen.tsx`'s `errorMessageFor`. */
@@ -377,6 +483,7 @@ export function UserFormScreen() {
   const {
     control,
     handleSubmit,
+    setError,
     watch,
     formState: { errors, isSubmitting },
   } = useForm<UserFormValues>({
@@ -389,6 +496,8 @@ export function UserFormScreen() {
       username: editingUser?.username ?? '',
       temporaryPassword: '',
       mobile: '',
+      // Regrouped for display — the API stores and returns 12 bare digits.
+      personalIdentity: formatAadhaar(editingUser?.personalIdentity ?? ''),
       // `monthlySalary` is a plain mutable field (unlike `halfDayRate`,
       // below) — pre-filled with the current value so editing it is a
       // normal overwrite, not a blank "enter a new value" field.
@@ -572,6 +681,30 @@ export function UserFormScreen() {
     }
   }
 
+  /**
+   * Routes `{ path, message }` pairs — from the shared schema or from the
+   * API's `VALIDATION_FAILED` body — onto the field they name, so they
+   * render under that input like every other message on this form. Returns
+   * how many it placed; anything it could not place (a cross-field issue,
+   * an unknown path) stays the caller's problem to show under Save.
+   */
+  function applyFieldIssues(
+    issues: Array<{ path: string; message: string }>,
+  ): number {
+    let placed = 0;
+    for (const issue of issues) {
+      const field = issue.path.split('.')[0];
+      if (field && field in ERROR_RENDERING_FIELDS && issue.message) {
+        setError(field as keyof UserFormValues, {
+          type: 'server',
+          message: issue.message,
+        });
+        placed += 1;
+      }
+    }
+    return placed;
+  }
+
   const onSubmit = handleSubmit(async (values) => {
     setSubmitError(null);
     const cleaned = stripBlanks(values);
@@ -579,24 +712,32 @@ export function UserFormScreen() {
       cleaned.photoFileId = photoFileId;
     }
 
+    const schema = isEditing ? updateUserSchema : createUserSchema;
+    const parsed = schema.safeParse(cleaned);
+    if (!parsed.success) {
+      // `rules` above have already caught the per-field format mistakes;
+      // what reaches here is mostly the role-dependent requirements
+      // `createUserSchema.superRefine` owns ("username is required when
+      // role is not EMPLOYEE"). Those carry a path too, so they belong
+      // under their field rather than in one line at the bottom.
+      const issues = parsed.error.issues.map((issue) => ({
+        path: issue.path.join('.'),
+        message: issue.message,
+      }));
+      if (applyFieldIssues(issues) === 0) {
+        setSubmitError(issues[0]?.message ?? 'Invalid input.');
+      }
+      return;
+    }
+
     try {
       if (isEditing && editingUser) {
-        const parsed = updateUserSchema.safeParse(cleaned);
-        if (!parsed.success) {
-          setSubmitError(parsed.error.issues[0]?.message ?? 'Invalid input.');
-          return;
-        }
         await apiRequest(`/users/${editingUser.id}`, {
           method: 'PATCH',
           body: parsed.data,
           idempotencyKey: generateIdempotencyKey(),
         });
       } else {
-        const parsed = createUserSchema.safeParse(cleaned);
-        if (!parsed.success) {
-          setSubmitError(parsed.error.issues[0]?.message ?? 'Invalid input.');
-          return;
-        }
         await apiRequest('/users', {
           method: 'POST',
           body: parsed.data,
@@ -605,7 +746,16 @@ export function UserFormScreen() {
       }
       navigation.goBack();
     } catch (error) {
-      setSubmitError(errorMessageFor(error));
+      // A 400 carries the same `{ path, message }` pairs
+      // (`zod-validation.pipe.ts`), so a rule this build's copy of the
+      // schema does not have yet still lands under its own field.
+      const details =
+        error instanceof ApiError && error.code === 'VALIDATION_FAILED'
+          ? (error.details ?? [])
+          : [];
+      if (applyFieldIssues(details) === 0) {
+        setSubmitError(errorMessageFor(error));
+      }
     }
   });
 
@@ -718,18 +868,17 @@ export function UserFormScreen() {
                 <TextInput
                   onBlur={onBlur}
                   onChangeText={onChange}
-                  style={INPUT_STYLE}
+                  style={inputStyleFor(Boolean(errors.name))}
                   testID="user-form-name"
                   value={value}
                 />
               )}
-              rules={{ required: 'Name is required.' }}
+              rules={{
+                required: 'Name is required.',
+                validate: VALIDATE.name,
+              }}
             />
-            {errors.name ? (
-              <Text style={{ marginTop: 4, fontSize: 12, color: DANGER }}>
-                {errors.name.message}
-              </Text>
-            ) : null}
+            <FieldError>{errors.name?.message}</FieldError>
           </View>
 
           <View>
@@ -740,15 +889,18 @@ export function UserFormScreen() {
               render={({ field: { onBlur, onChange, value } }) => (
                 <TextInput
                   autoCapitalize="none"
+                  autoCorrect={false}
                   keyboardType="email-address"
                   onBlur={onBlur}
                   onChangeText={onChange}
-                  style={INPUT_STYLE}
+                  style={inputStyleFor(Boolean(errors.email))}
                   testID="user-form-email"
                   value={value}
                 />
               )}
+              rules={{ validate: VALIDATE.email }}
             />
+            <FieldError>{errors.email?.message}</FieldError>
           </View>
 
           {showUsernameField || showCredentialFields ? (
@@ -763,14 +915,17 @@ export function UserFormScreen() {
                       <TextInput
                         autoCapitalize="none"
                         autoCorrect={false}
+                        maxLength={USERNAME_MAX_LENGTH}
                         onBlur={onBlur}
                         onChangeText={onChange}
-                        style={INPUT_STYLE}
+                        style={inputStyleFor(Boolean(errors.username))}
                         testID="user-form-username"
                         value={value}
                       />
                     )}
+                    rules={{ validate: VALIDATE.username }}
                   />
+                  <FieldError>{errors.username?.message}</FieldError>
                 </View>
               ) : null}
               {showCredentialFields ? (
@@ -788,6 +943,7 @@ export function UserFormScreen() {
                       />
                     )}
                   />
+                  <FieldError>{errors.temporaryPassword?.message}</FieldError>
                 </View>
               ) : null}
             </View>
@@ -802,16 +958,55 @@ export function UserFormScreen() {
                 render={({ field: { onBlur, onChange, value } }) => (
                   <TextInput
                     keyboardType="phone-pad"
+                    maxLength={10}
                     onBlur={onBlur}
                     onChangeText={onChange}
-                    style={INPUT_STYLE}
+                    style={inputStyleFor(Boolean(errors.mobile))}
                     testID="user-form-mobile"
                     value={value}
                   />
                 )}
+                rules={{ validate: VALIDATE.mobile }}
               />
+              <FieldError>{errors.mobile?.message}</FieldError>
             </View>
           ) : null}
+
+          <View>
+            <FieldLabel>Aadhaar number</FieldLabel>
+            <Controller
+              control={control}
+              name="personalIdentity"
+              render={({ field: { onBlur, onChange, value } }) => (
+                <TextInput
+                  keyboardType="number-pad"
+                  // 12 digits + the 2 spaces this field inserts. The cap is
+                  // belt-and-braces: `formatAadhaar` already discards
+                  // anything past the 12th digit, so a paste of a longer
+                  // string is truncated rather than refused.
+                  maxLength={AADHAAR_DISPLAY_LENGTH}
+                  onBlur={onBlur}
+                  // Regroup on every keystroke, so the field reads
+                  // "1234 5678 9012" as it is typed. Non-digits are
+                  // dropped here rather than flagged — a letter or symbol
+                  // simply never lands in the field, which is a quieter
+                  // way to enforce "digits only" than an error message
+                  // about a character the admin can already see is wrong.
+                  onChangeText={(text) => onChange(formatAadhaar(text))}
+                  placeholder="1234 5678 9012"
+                  placeholderTextColor={MUTED}
+                  style={[
+                    inputStyleFor(Boolean(errors.personalIdentity)),
+                    { fontFamily: 'monospace' },
+                  ]}
+                  testID="user-form-personal-identity"
+                  value={value}
+                />
+              )}
+              rules={{ validate: VALIDATE.aadhaar }}
+            />
+            <FieldError>{errors.personalIdentity?.message}</FieldError>
+          </View>
 
           {isEditing && showUsernameField ? (
             <Text style={{ fontSize: 12, color: MUTED, lineHeight: 17 }}>
@@ -888,12 +1083,17 @@ export function UserFormScreen() {
                     keyboardType="decimal-pad"
                     onBlur={onBlur}
                     onChangeText={onChange}
-                    style={[INPUT_STYLE, { fontFamily: 'monospace' }]}
+                    style={[
+                      inputStyleFor(Boolean(errors.monthlySalary)),
+                      { fontFamily: 'monospace' },
+                    ]}
                     testID="user-form-monthly-salary"
                     value={value}
                   />
                 )}
+                rules={{ validate: VALIDATE.amount }}
               />
+              <FieldError>{errors.monthlySalary?.message}</FieldError>
             </View>
             <View style={{ flex: 1 }}>
               <FieldLabel>Half-day rate (₹)</FieldLabel>
@@ -907,12 +1107,17 @@ export function UserFormScreen() {
                     onChangeText={onChange}
                     placeholder={editingUser?.halfDayRate ?? undefined}
                     placeholderTextColor={MUTED}
-                    style={[INPUT_STYLE, { fontFamily: 'monospace' }]}
+                    style={[
+                      inputStyleFor(Boolean(errors.halfDayRate)),
+                      { fontFamily: 'monospace' },
+                    ]}
                     testID="user-form-half-day-rate"
                     value={value}
                   />
                 )}
+                rules={{ validate: VALIDATE.amount }}
               />
+              <FieldError>{errors.halfDayRate?.message}</FieldError>
             </View>
           </View>
           {isEditing && editingUser?.halfDayRate ? (
@@ -943,7 +1148,10 @@ export function UserFormScreen() {
                       },
                     })
                   }
-                  style={[INPUT_STYLE, { justifyContent: 'center' }]}
+                  style={[
+                    inputStyleFor(Boolean(errors.rateEffectiveFrom)),
+                    { justifyContent: 'center' },
+                  ]}
                   testID="user-form-rate-effective-from"
                 >
                   <Text
@@ -958,7 +1166,15 @@ export function UserFormScreen() {
                   </Text>
                 </Pressable>
               )}
+              rules={{
+                // The picker can only ever emit a real `YYYY-MM-DD`
+                // (`formatDate`), so this never fires from normal use — it
+                // is here so the rule is stated alongside the others, and
+                // so a future free-text entry point inherits it.
+                validate: VALIDATE.isoDate,
+              }}
             />
+            <FieldError>{errors.rateEffectiveFrom?.message}</FieldError>
           </View>
 
           <Text style={{ fontSize: 12, color: MUTED, lineHeight: 17 }}>

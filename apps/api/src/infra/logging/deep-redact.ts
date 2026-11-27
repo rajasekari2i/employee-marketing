@@ -57,6 +57,14 @@ const SENSITIVE_KEYS = new Set<string>([
   'currentPassword',
   'newPassword',
   'confirmPassword',
+  // Aadhaar (`User.personalIdentity`). A government identity number is
+  // exactly the class of value Constitution rule 9 exists for — it must
+  // never appear in a request log line, an error payload or an analytics
+  // event. Both spellings: the camelCase field name as it travels in
+  // request/response bodies, and the snake_case column name as it can
+  // appear in a Prisma error or a raw-query log.
+  'personalIdentity',
+  'personal_identity',
 ]);
 
 const REDACTED = '[REDACTED]';

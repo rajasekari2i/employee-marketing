@@ -18,6 +18,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   createShopSchema,
   updateShopSchema,
+  FIELD_FORMAT_MESSAGES,
+  FIELD_FORMAT_TESTS,
   type LocationSource,
 } from '@field-sales/shared';
 
@@ -38,7 +40,7 @@ import {
   ensureCameraPermission,
 } from '../../lib/permissions';
 import type { AdminStackParamList } from '../../navigation/RootNavigator';
-import { BG, BLUE, BORDER, INK, LABEL, MUTED } from './adminDesign';
+import { BG, BLUE, BORDER, DANGER, INK, LABEL, MUTED } from './adminDesign';
 import type { ShopSummaryForEdit } from './ShopsListScreen';
 
 /**
@@ -135,6 +137,28 @@ const SOURCE_LABEL: Record<LocationSource, string> = {
   MANUAL_DRAG: 'manual drag',
   GPS: 'current location',
 };
+
+/**
+ * Pulls the per-field half out of the API's `VALIDATION_FAILED` body. Only
+ * paths this screen has an inline slot for are kept — anything else stays
+ * with `errorMessageFor` under the Save button.
+ */
+function serverFieldErrorsFrom(error: unknown): ShopFieldErrors {
+  if (!(error instanceof ApiError) || error.code !== 'VALIDATION_FAILED') {
+    return {};
+  }
+  const errors: ShopFieldErrors = {};
+  for (const detail of error.details ?? []) {
+    // Nested paths ("location.latitude") are not this screen's inline
+    // fields — take the first segment and only if it is one of them.
+    const key = detail.path.split('.')[0];
+    if (key && key in FIELD_ERROR_KEYS && detail.message) {
+      const field = key as ShopFieldKey;
+      errors[field] ??= detail.message;
+    }
+  }
+  return errors;
+}
 
 function errorMessageFor(error: unknown): string {
   if (error instanceof ApiError) {
@@ -257,6 +281,99 @@ function Checkbox({
   );
 }
 
+/**
+ * The fields this screen validates per-field rather than through the single
+ * message under the Save button. Keyed by the payload key so a Zod issue's
+ * `path[0]` maps straight onto one.
+ */
+type ShopFieldKey =
+  | 'ownerName'
+  | 'phone'
+  | 'city'
+  | 'state'
+  | 'postalCode'
+  | 'verificationRadiusMeters';
+
+type ShopFieldErrors = Partial<Record<ShopFieldKey, string>>;
+
+/** The runtime half of `ShopFieldKey` — used to tell a Zod issue's `path[0]` apart from a field this screen shows no inline slot for. */
+const FIELD_ERROR_KEYS: Record<ShopFieldKey, true> = {
+  ownerName: true,
+  phone: true,
+  city: true,
+  state: true,
+  postalCode: true,
+  verificationRadiusMeters: true,
+};
+
+/**
+ * Board 4.9 has no error state — it was drawn with every field valid — so
+ * this follows the board's own system rather than inventing a style: the
+ * 12px/17 caption size it uses under a group, in the #A3261B (`DANGER`) the
+ * screen already uses for the submit error, directly under its input.
+ */
+function FieldError({ children }: { children?: string }) {
+  if (!children) {
+    return null;
+  }
+  return (
+    <Text style={{ fontSize: 12, color: DANGER, marginTop: 5, lineHeight: 16 }}>
+      {children}
+    </Text>
+  );
+}
+
+/** `INPUT_STYLE` with the red border an invalid field wears. */
+function inputStyleFor(hasError: boolean) {
+  return hasError
+    ? [INPUT_STYLE, { borderColor: DANGER }]
+    : (INPUT_STYLE as object);
+}
+
+/**
+ * Runs the same format rules the API enforces (`@field-sales/shared`'s
+ * `FIELD_FORMAT_TESTS`) over the raw text, so the message names the field
+ * and appears under it. Blank is never an error here — these are all
+ * optional fields; `createShopSchema` still has the final say on submit.
+ */
+function validateShopFields(values: {
+  ownerName: string;
+  phone: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  radius: string;
+}): ShopFieldErrors {
+  const errors: ShopFieldErrors = {};
+  const ownerName = values.ownerName.trim();
+  const phone = values.phone.trim();
+  const city = values.city.trim();
+  const state = values.state.trim();
+  const postalCode = values.postalCode.trim();
+  const radius = values.radius.trim();
+
+  if (ownerName && !FIELD_FORMAT_TESTS.personName(ownerName)) {
+    errors.ownerName = FIELD_FORMAT_MESSAGES.personName;
+  }
+  if (phone && !FIELD_FORMAT_TESTS.phone(phone)) {
+    errors.phone = FIELD_FORMAT_MESSAGES.phone;
+  }
+  if (city && !FIELD_FORMAT_TESTS.placeName(city)) {
+    errors.city = FIELD_FORMAT_MESSAGES.placeName;
+  }
+  if (state && !FIELD_FORMAT_TESTS.placeName(state)) {
+    errors.state = FIELD_FORMAT_MESSAGES.placeName;
+  }
+  if (postalCode && !FIELD_FORMAT_TESTS.postalCode(postalCode)) {
+    errors.postalCode = FIELD_FORMAT_MESSAGES.postalCode;
+  }
+  if (radius && !FIELD_FORMAT_TESTS.radiusMeters(radius)) {
+    errors.verificationRadiusMeters = FIELD_FORMAT_MESSAGES.radius;
+  }
+
+  return errors;
+}
+
 export function ShopFormScreen() {
   const navigation = useNavigation<ShopFormNavigationProp>();
   const route = useRoute<ShopFormRouteProp>();
@@ -318,7 +435,40 @@ export function ShopFormScreen() {
   const [locating, setLocating] = useState(false);
 
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<ShopFieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
+
+  /**
+   * Re-checks a field that is *already* showing an error, so the message
+   * clears the moment it is fixed instead of lingering until the next Save.
+   * A field with no error yet stays quiet while it is being typed into —
+   * flagging "9876" as an invalid phone on the fourth keystroke of a number
+   * someone is halfway through typing is noise, not help.
+   */
+  function clearFieldErrorWhenFixed(field: ShopFieldKey, value: string): void {
+    setFieldErrors((prev) => {
+      if (!prev[field]) {
+        return prev;
+      }
+      const trimmed = value.trim();
+      const test =
+        field === 'ownerName'
+          ? FIELD_FORMAT_TESTS.personName
+          : field === 'phone'
+            ? FIELD_FORMAT_TESTS.phone
+            : field === 'postalCode'
+              ? FIELD_FORMAT_TESTS.postalCode
+              : field === 'verificationRadiusMeters'
+                ? FIELD_FORMAT_TESTS.radiusMeters
+                : FIELD_FORMAT_TESTS.placeName;
+      if (trimmed && !test(trimmed)) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  }
 
   async function pickPhoto(source: 'camera' | 'gallery'): Promise<void> {
     // The launch-time ask (App.tsx) usually means this is already granted,
@@ -512,6 +662,24 @@ export function ShopFormScreen() {
     setSubmitError(null);
 
     const trimmedRadius = radius.trim();
+
+    // Format rules first, against the raw text, so each message lands under
+    // its own field. The schema parse below still runs — it owns the rules
+    // these do not cover (required fields, lengths, the location shape) and
+    // it is the same object the API validates with.
+    const formatErrors = validateShopFields({
+      ownerName,
+      phone,
+      city,
+      state,
+      postalCode,
+      radius,
+    });
+    setFieldErrors(formatErrors);
+    if (Object.keys(formatErrors).length > 0) {
+      return;
+    }
+
     const payload = {
       shopCode: shopCode.trim(),
       name: name.trim(),
@@ -539,9 +707,27 @@ export function ShopFormScreen() {
     const schema = isEditing ? updateShopSchema : createShopSchema;
     const parsed = schema.safeParse(payload);
     if (!parsed.success) {
-      setSubmitError(parsed.error.issues[0]?.message ?? 'Invalid input.');
+      // Anything the schema catches that the format pass did not: put it
+      // under its field when it belongs to one, otherwise under Save.
+      const schemaFieldErrors: ShopFieldErrors = {};
+      let firstOther: string | null = null;
+      for (const issue of parsed.error.issues) {
+        const key = issue.path[0];
+        if (typeof key === 'string' && key in FIELD_ERROR_KEYS) {
+          const field = key as ShopFieldKey;
+          schemaFieldErrors[field] ??= issue.message;
+        } else if (firstOther === null) {
+          firstOther = issue.message;
+        }
+      }
+      setFieldErrors(schemaFieldErrors);
+      if (firstOther !== null || Object.keys(schemaFieldErrors).length === 0) {
+        setSubmitError(firstOther ?? 'Invalid input.');
+      }
       return;
     }
+
+    setFieldErrors({});
 
     setSubmitting(true);
     try {
@@ -584,7 +770,15 @@ export function ShopFormScreen() {
 
       navigation.goBack();
     } catch (error) {
-      setSubmitError(errorMessageFor(error));
+      // A 400 from the API carries the same `{path, message}` pairs the
+      // local pass produces (`zod-validation.pipe.ts`), so a rule this
+      // build's copy of the schema does not have yet still lands under its
+      // own field instead of as "Request validation failed."
+      const serverFieldErrors = serverFieldErrorsFrom(error);
+      setFieldErrors(serverFieldErrors);
+      if (Object.keys(serverFieldErrors).length === 0) {
+        setSubmitError(errorMessageFor(error));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -779,21 +973,33 @@ export function ShopFormScreen() {
             <View style={{ flex: 1 }}>
               <FieldLabel>Owner name</FieldLabel>
               <TextInput
-                onChangeText={setOwnerName}
-                style={INPUT_STYLE}
+                onChangeText={(text) => {
+                  setOwnerName(text);
+                  clearFieldErrorWhenFixed('ownerName', text);
+                }}
+                style={inputStyleFor(Boolean(fieldErrors.ownerName))}
                 testID="shop-form-owner"
                 value={ownerName}
               />
+              <FieldError>{fieldErrors.ownerName}</FieldError>
             </View>
             <View style={{ flex: 1 }}>
               <FieldLabel>Phone</FieldLabel>
               <TextInput
                 inputMode="tel"
-                onChangeText={setPhone}
-                style={[INPUT_STYLE, { fontFamily: 'monospace' }]}
+                maxLength={10}
+                onChangeText={(text) => {
+                  setPhone(text);
+                  clearFieldErrorWhenFixed('phone', text);
+                }}
+                style={[
+                  inputStyleFor(Boolean(fieldErrors.phone)),
+                  { fontFamily: 'monospace' },
+                ]}
                 testID="shop-form-phone"
                 value={phone}
               />
+              <FieldError>{fieldErrors.phone}</FieldError>
             </View>
           </View>
         </Group>
@@ -1006,30 +1212,46 @@ export function ShopFormScreen() {
             <View style={{ flex: 1 }}>
               <FieldLabel>City</FieldLabel>
               <TextInput
-                onChangeText={setCity}
-                style={INPUT_STYLE}
+                onChangeText={(text) => {
+                  setCity(text);
+                  clearFieldErrorWhenFixed('city', text);
+                }}
+                style={inputStyleFor(Boolean(fieldErrors.city))}
                 testID="shop-form-city"
                 value={city}
               />
+              <FieldError>{fieldErrors.city}</FieldError>
             </View>
             <View style={{ flex: 1 }}>
               <FieldLabel>State</FieldLabel>
               <TextInput
-                onChangeText={setState}
-                style={INPUT_STYLE}
+                onChangeText={(text) => {
+                  setState(text);
+                  clearFieldErrorWhenFixed('state', text);
+                }}
+                style={inputStyleFor(Boolean(fieldErrors.state))}
                 testID="shop-form-state"
                 value={state}
               />
+              <FieldError>{fieldErrors.state}</FieldError>
             </View>
             <View style={{ flex: 1 }}>
               <FieldLabel>PIN code</FieldLabel>
               <TextInput
                 inputMode="numeric"
-                onChangeText={setPostalCode}
-                style={[INPUT_STYLE, { fontFamily: 'monospace' }]}
+                maxLength={7}
+                onChangeText={(text) => {
+                  setPostalCode(text);
+                  clearFieldErrorWhenFixed('postalCode', text);
+                }}
+                style={[
+                  inputStyleFor(Boolean(fieldErrors.postalCode)),
+                  { fontFamily: 'monospace' },
+                ]}
                 testID="shop-form-postal-code"
                 value={postalCode}
               />
+              <FieldError>{fieldErrors.postalCode}</FieldError>
             </View>
           </View>
         </Group>
@@ -1186,13 +1408,20 @@ export function ShopFormScreen() {
             <FieldLabel>Override for this shop (metres)</FieldLabel>
             <TextInput
               inputMode="numeric"
-              onChangeText={setRadius}
+              onChangeText={(text) => {
+                setRadius(text);
+                clearFieldErrorWhenFixed('verificationRadiusMeters', text);
+              }}
               placeholder="Leave blank for the company default"
               placeholderTextColor={MUTED}
-              style={[INPUT_STYLE, { fontFamily: 'monospace' }]}
+              style={[
+                inputStyleFor(Boolean(fieldErrors.verificationRadiusMeters)),
+                { fontFamily: 'monospace' },
+              ]}
               testID="shop-form-radius"
               value={radius}
             />
+            <FieldError>{fieldErrors.verificationRadiusMeters}</FieldError>
           </View>
           <Text style={{ fontSize: 12, color: MUTED, lineHeight: 17 }}>
             Leave blank to use the company default. Pin changes after save go

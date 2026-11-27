@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   useFocusEffect,
   useNavigation,
@@ -8,6 +8,7 @@ import {
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Modal,
   Pressable,
@@ -15,16 +16,22 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { launchCamera } from 'react-native-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { apiRequest } from '../../api/client';
+import { apiRequest, generateIdempotencyKey } from '../../api/client';
 import { AdminBottomNav } from '../../components/AdminBottomNav';
 import {
   OutlineIcon,
   type IconShape,
 } from '../../components/icons/OutlineIcon';
+import {
+  cameraPermissionMessage,
+  ensureCameraPermission,
+} from '../../lib/permissions';
 import type { AdminStackParamList } from '../../navigation/RootNavigator';
 import { BG, BLUE, BORDER, INK, LABEL, MUTED } from './adminDesign';
+import { ShopPhotoPill, ShopPhotosSheet } from './ShopPhotosSheet';
 
 /**
  * PRD §4 screen 4.8 ("Shops · list"). Layout/colors/icons below are taken
@@ -57,13 +64,34 @@ export interface ShopSummaryForEdit {
   verificationRadiusMeters: number | null;
   isActive: boolean;
   beatPlanNames: string[];
-  photos: Array<{ id: string; url: string }>;
+  /**
+   * `url` is the `?thumb=1` variant (card + 64px strip); `fullUrl` the
+   * original, for the photo sheet's pager and the full-screen viewer.
+   * `createdAt` backs the viewer's "Added <date>" caption.
+   */
+  photos: Array<{
+    id: string;
+    url: string;
+    fullUrl: string;
+    createdAt: string;
+  }>;
 }
 
 interface ShopsListResponse {
   items: ShopSummaryForEdit[];
+  /** `null` when this was the last page — what stops the infinite scroll asking again. */
   nextCursor: string | null;
+  /** Server-counted, matching the current filters — not `items.length`. */
+  total: number;
+  /** Server-counted, company-wide and filter-independent (labels the "No pin" chip). */
+  noPinTotal: number;
 }
+
+/** Shops per request — the design's page size, and the API's own default. */
+const PAGE_SIZE = 20;
+
+/** FR-007, mirrored from the API's own `MAX_SHOP_PHOTOS` — hides the sheet's add tile at the cap. */
+const MAX_SHOP_PHOTOS = 3;
 
 type ShopsListNavigationProp = NativeStackNavigationProp<
   AdminStackParamList,
@@ -128,10 +156,36 @@ export function ShopsListScreen() {
 
   const [items, setItems] = useState<ShopSummaryForEdit[]>([]);
   const [loading, setLoading] = useState(true);
+  /** Cursor for the NEXT page; `null` means there is no next page. */
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  /** True only while an append is in flight — drives the footer spinner, and stops `onEndReached` stacking requests. */
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  // Unfiltered — only for the header's "N shops · N without pin" line, same
-  // client-side-counted posture as UsersListScreen.tsx's "allUsers".
-  const [allShops, setAllShops] = useState<ShopSummaryForEdit[]>([]);
+  // Server-counted (`total`/`noPinTotal` on the list response). These used
+  // to be the length of a separate `?limit=100` fetch, which silently
+  // capped both numbers at 100 however many shops the company really had.
+  const [total, setTotal] = useState(0);
+  const [noPinCount, setNoPinCount] = useState(0);
+
+  /**
+   * Bumped by every filter/search change and every fresh `load()`. An
+   * in-flight append compares the generation it started under against this
+   * before committing, so a page that arrives after the admin has already
+   * retyped the search is DISCARDED rather than appended to a list it does
+   * not belong to.
+   */
+  const requestGeneration = useRef(0);
+
+  /**
+   * The shop whose photos the sheet is showing — the id, not the row, so
+   * the sheet always reads the CURRENT row out of `items`. Holding the row
+   * itself would leave the sheet showing a stale photo list the moment an
+   * upload refreshed the page underneath it.
+   */
+  const [photoSheetShopId, setPhotoSheetShopId] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const photoSheetShop =
+    items.find((shop) => shop.id === photoSheetShopId) ?? null;
 
   useEffect(() => {
     const handle = setTimeout(() => {
@@ -158,10 +212,17 @@ export function ShopsListScreen() {
     };
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
+  /**
+   * The query string for the current search/filter selection, WITHOUT a
+   * cursor. Both `load` (first page) and `loadMore` (every page after)
+   * build on this, so the two can never disagree about what is being
+   * listed — the bug that makes an appended page belong to a different
+   * filter than the rows above it.
+   */
+  const buildQuery = useCallback(
+    (cursor: string | null): string => {
       const params = new URLSearchParams();
+      params.set('limit', String(PAGE_SIZE));
       if (debouncedSearch) {
         params.set('search', debouncedSearch);
       }
@@ -173,40 +234,179 @@ export function ShopsListScreen() {
       if (selectedBeatPlan) {
         params.set('beatPlanId', selectedBeatPlan.id);
       }
-      const query = params.toString();
+      if (cursor) {
+        params.set('cursor', cursor);
+      }
+      return params.toString();
+    },
+    [debouncedSearch, filter, selectedBeatPlan],
+  );
+
+  /** First page: REPLACES the list. Every filter change and every screen focus comes through here. */
+  const load = useCallback(async () => {
+    const generation = (requestGeneration.current += 1);
+    setLoading(true);
+    try {
       const result = await apiRequest<ShopsListResponse>(
-        `/shops${query ? `?${query}` : ''}`,
+        `/shops?${buildQuery(null)}`,
       );
+      if (generation !== requestGeneration.current) {
+        return;
+      }
       setItems(result.items);
+      setNextCursor(result.nextCursor);
+      setTotal(result.total);
+      setNoPinCount(result.noPinTotal);
     } catch {
       // Leave the previous list visible on a transient failure — no
       // dedicated error banner on this screen in this slice.
     } finally {
-      setLoading(false);
+      if (generation === requestGeneration.current) {
+        setLoading(false);
+      }
     }
-  }, [debouncedSearch, filter, selectedBeatPlan]);
+  }, [buildQuery]);
 
-  const loadCounts = useCallback(async () => {
+  /**
+   * Next page: APPENDS. Called by the list's `onEndReached`.
+   *
+   * Three guards, each for a failure this screen can actually hit:
+   *  - `nextCursor === null` — there is no next page; `onEndReached` still
+   *    fires on every small scroll at the bottom of a finished list.
+   *  - `loadingMore` — `onEndReached` fires repeatedly while a fetch is in
+   *    flight, which would otherwise request the same cursor several times
+   *    and append the same rows twice.
+   *  - `loading` — a first-page load is already replacing the list; an
+   *    append landing on top of that would interleave two different pages.
+   */
+  const loadMore = useCallback(async () => {
+    if (nextCursor === null || loadingMore || loading) {
+      return;
+    }
+    const generation = requestGeneration.current;
+    setLoadingMore(true);
     try {
-      const result = await apiRequest<ShopsListResponse>('/shops?limit=100');
-      setAllShops(result.items);
+      const result = await apiRequest<ShopsListResponse>(
+        `/shops?${buildQuery(nextCursor)}`,
+      );
+      // The filter changed while this page was in flight — these rows
+      // belong to a list that is no longer on screen.
+      if (generation !== requestGeneration.current) {
+        return;
+      }
+      setItems((prev) => {
+        // Belt-and-braces against a duplicate id: a shop created between
+        // two page fetches shifts the window, and `createdAt desc` means
+        // it lands at the TOP, so the boundary row can repeat. A repeated
+        // key is a hard render error in FlatList, not a cosmetic one.
+        const seen = new Set(prev.map((shop) => shop.id));
+        return [...prev, ...result.items.filter((shop) => !seen.has(shop.id))];
+      });
+      setNextCursor(result.nextCursor);
+      setTotal(result.total);
+      setNoPinCount(result.noPinTotal);
     } catch {
-      // Leave the previous counts visible on a transient failure.
+      // Keep what is already on screen and keep the cursor, so the next
+      // scroll to the bottom retries this same page.
+    } finally {
+      setLoadingMore(false);
     }
-  }, []);
+  }, [buildQuery, loading, loadingMore, nextCursor]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
-
+  /**
+   * The only loader for the first page. `useFocusEffect` re-runs both when
+   * the screen regains focus AND when `load`'s identity changes while it is
+   * focused (i.e. the search or a filter changed), which covers everything
+   * the separate mount-time `useEffect` here used to — that pair fired two
+   * identical requests on every mount.
+   *
+   * Note this RESETS to page 1: returning from the shop form after
+   * scrolling deep into the list puts the admin back at the top. That is
+   * the price of guaranteeing an edited shop shows its new values; the
+   * alternative (merging the refreshed first page into the existing list)
+   * misses an edit to any shop past row 20.
+   */
   useFocusEffect(
     useCallback(() => {
       void load();
-      void loadCounts();
-    }, [load, loadCounts]),
+    }, [load]),
   );
 
-  const noPinCount = allShops.filter((s) => s.pinStatus === 'NONE').length;
+  /**
+   * The card pill's two behaviours, from board "Shop card photo icon
+   * states": a shop WITH photos opens the sheet; a shop with none goes
+   * straight to the camera ("No photos · tap opens camera"), since opening
+   * an empty sheet just to press its add tile is a wasted step.
+   */
+  function openPhotos(shop: ShopSummaryForEdit): void {
+    if (shop.photos.length > 0) {
+      setPhotoSheetShopId(shop.id);
+      return;
+    }
+    void addPhoto(shop.id);
+  }
+
+  /**
+   * Camera -> `POST /shops/:id/photos` -> reload, so the new photo is on
+   * the card and in the sheet. Not queued through the outbox: that holds
+   * field work an executive cannot redo (visits, pins, extra stops), while
+   * this is a Company Admin at a desk who can simply retry.
+   */
+  async function addPhoto(shopId: string): Promise<void> {
+    const permission = await ensureCameraPermission();
+    if (permission !== 'GRANTED') {
+      Alert.alert('Camera unavailable', cameraPermissionMessage(permission));
+      return;
+    }
+
+    const result = await launchCamera({ mediaType: 'photo', quality: 0.8 });
+    if (result.didCancel) {
+      return;
+    }
+    // Surfaced, not swallowed — the same reasoning as `ShopFormScreen`'s
+    // picker: dropping this is what makes a blocked camera look like a
+    // dead button.
+    if (result.errorCode) {
+      Alert.alert(
+        'Could not open the camera',
+        result.errorMessage ?? 'Something went wrong. Please try again.',
+      );
+      return;
+    }
+    const asset = result.assets?.[0];
+    if (!asset?.uri) {
+      return;
+    }
+
+    setUploadingPhoto(true);
+    try {
+      const formData = new FormData();
+      // SAFETY: the RN FormData file-descriptor shape — same as
+      // `ShopFormScreen`'s upload; no RN-specific FormData types ship with
+      // this project to express it more precisely.
+      formData.append('photo', {
+        uri: asset.uri,
+        name: asset.fileName ?? 'photo.jpg',
+        type: asset.type ?? 'image/jpeg',
+      });
+      await apiRequest(`/shops/${shopId}/photos`, {
+        method: 'POST',
+        body: formData,
+        idempotencyKey: generateIdempotencyKey(),
+      });
+      await load();
+      // Opening the sheet only AFTER a successful first upload is what
+      // makes "tap the dashed pill" feel like one action rather than two.
+      setPhotoSheetShopId(shopId);
+    } catch {
+      Alert.alert(
+        'Could not add the photo',
+        'Check your connection and try again.',
+      );
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
 
   function toggleSelected(shopId: string): void {
     setSelectedIds((prev) => {
@@ -238,7 +438,7 @@ export function ShopsListScreen() {
       >
         <View style={{ gap: 2 }}>
           <Text style={{ fontSize: 13, color: MUTED }}>
-            {allShops.length} shops · {noPinCount} without pin
+            {total} shops · {noPinCount} without pin
           </Text>
           <Text style={{ fontSize: 28, fontWeight: '700', color: INK }}>
             Shops
@@ -368,6 +568,18 @@ export function ShopsListScreen() {
               </Text>
             </View>
           }
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={{ paddingVertical: 20 }}>
+                <ActivityIndicator testID="shops-list-loading-more" />
+              </View>
+            ) : undefined
+          }
+          onEndReached={() => void loadMore()}
+          // Half a screen from the bottom: far enough that the next page is
+          // usually already in hand by the time the admin gets there, close
+          // enough not to fetch page 2 the moment page 1 renders.
+          onEndReachedThreshold={0.5}
           renderItem={({ item }) => {
             const chip = pinChipColors(item.pinStatus);
             const selected = selectedIds.has(item.id);
@@ -458,17 +670,45 @@ export function ShopsListScreen() {
                 <Text numberOfLines={1} style={{ fontSize: 13, color: LABEL }}>
                   {addressLine(item)}
                 </Text>
-                <Text style={{ fontSize: 12, color: MUTED }}>
-                  <Text style={{ fontFamily: 'monospace' }}>
-                    {item.shopCode}
+                {/*
+                  Board "Shop list with photo icon": the meta line and the
+                  photo pill share one row, meta taking the slack and the
+                  pill pinned to the trailing edge.
+                */}
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}
+                >
+                  <Text
+                    numberOfLines={1}
+                    style={{ flex: 1, minWidth: 0, fontSize: 12, color: MUTED }}
+                  >
+                    <Text style={{ fontFamily: 'monospace' }}>
+                      {item.shopCode}
+                    </Text>
+                    {' · '}
+                    {item.beatPlanNames.length > 0
+                      ? item.beatPlanNames.join(', ')
+                      : 'Unassigned'}
+                    {' · '}
+                    {item.ownerName ?? '—'}
                   </Text>
-                  {' · '}
-                  {item.beatPlanNames.length > 0
-                    ? item.beatPlanNames.join(', ')
-                    : 'Unassigned'}
-                  {' · '}
-                  {item.ownerName ?? '—'}
-                </Text>
+                  {/*
+                    Hidden while picking shops for a beat plan: in that mode
+                    the whole card is a checkbox, and a control that does
+                    something else inside it is a trap.
+                  */}
+                  {selectionMode ? null : (
+                    <ShopPhotoPill
+                      count={item.photos.length}
+                      onPress={() => openPhotos(item)}
+                      shopName={item.name}
+                    />
+                  )}
+                </View>
               </Pressable>
             );
           }}
@@ -584,6 +824,41 @@ export function ShopsListScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {photoSheetShop ? (
+        <ShopPhotosSheet
+          canAddPhoto={photoSheetShop.photos.length < MAX_SHOP_PHOTOS}
+          onAddPhoto={() => void addPhoto(photoSheetShop.id)}
+          onClose={() => setPhotoSheetShopId(null)}
+          photos={photoSheetShop.photos}
+          shopCode={photoSheetShop.shopCode}
+          shopName={photoSheetShop.name}
+          visible
+        />
+      ) : null}
+
+      {/*
+        A full-screen block while a photo uploads: the camera has just
+        closed, the card has not changed yet, and without this the admin is
+        looking at a list that appears to have ignored them.
+      */}
+      {uploadingPhoto ? (
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            backgroundColor: 'rgba(11, 11, 15, 0.35)',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          testID="shops-list-photo-uploading"
+        >
+          <ActivityIndicator color="#FFFFFF" size="large" />
+        </View>
+      ) : null}
     </View>
   );
 }

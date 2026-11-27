@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { apiRequest } from '../../api/client';
+import { apiRequest, resolveFileUrl } from '../../api/client';
 import { AccountMenu } from '../../components/AccountMenu';
 import { ManagerBottomNav } from '../../components/ManagerBottomNav';
 import {
@@ -96,6 +96,7 @@ export function PreviousDayReportScreen() {
 
   const [data, setData] = useState<Report | null>(null);
   const [name, setName] = useState<string | undefined>(undefined);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [staleNote, setStaleNote] = useState<string | null>(null);
@@ -108,8 +109,12 @@ export function PreviousDayReportScreen() {
   }, [data]);
 
   useEffect(() => {
-    void apiRequest<{ name: string }>('/me')
-      .then((me) => setName(me.name))
+    void apiRequest<{ name: string; photoThumbUrl: string | null }>('/me')
+      .then((me) => {
+        setName(me.name);
+        setPhotoUrl(me.photoThumbUrl ? resolveFileUrl(me.photoThumbUrl) : null);
+      })
+      // Best-effort — the avatar falls back to initials.
       .catch(() => undefined);
   }, []);
 
@@ -198,6 +203,7 @@ export function PreviousDayReportScreen() {
             name={name}
             onLogoutPress={() => void handleLogout()}
             onProfilePress={() => navigation.navigate('Profile')}
+            photoUrl={photoUrl}
             roleLabel={ROLE_LABELS.MANAGER}
             testIDPrefix="manager"
           />

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Modal, Pressable, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Image, Modal, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -60,6 +60,7 @@ export function initialsFor(name: string | null | undefined): string {
 
 export function AccountMenu({
   name,
+  photoUrl,
   roleLabel,
   onProfilePress,
   onLogoutPress,
@@ -67,6 +68,13 @@ export function AccountMenu({
   testIDPrefix = 'account',
 }: {
   name: string | null | undefined;
+  /**
+   * `GET /me`'s `photoThumbUrl`, already through `resolveFileUrl` — the
+   * signed `?thumb=1` variant, which is what this 44px circle wants.
+   * Absent/null falls back to initials, which is still the correct display
+   * for anyone who has not uploaded a photo.
+   */
+  photoUrl?: string | null;
   /** Already resolved from `ROLE_LABELS` — the menu never guesses a role. */
   roleLabel: string;
   onProfilePress: () => void;
@@ -76,6 +84,18 @@ export function AccountMenu({
 }) {
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
+
+  /**
+   * A signed file URL can fail on its own (an expired token, the file
+   * pruned by the photo-cleanup job, no connection). `<Image>` renders a
+   * blank box in that case, which reads as a broken avatar — so a failure
+   * falls back to the initials rather than showing nothing.
+   */
+  const [photoFailed, setPhotoFailed] = useState(false);
+  // A NEW url deserves a fresh attempt — without this, one failure would
+  // keep showing initials even after the photo is replaced.
+  useEffect(() => setPhotoFailed(false), [photoUrl]);
+  const showPhoto = Boolean(photoUrl) && !photoFailed;
 
   return (
     <>
@@ -97,20 +117,38 @@ export function AccountMenu({
         }}
         testID={`${testIDPrefix}-avatar`}
       >
-        <View
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: 22,
-            backgroundColor: INK,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Text style={{ fontSize: 15, fontWeight: '700', color: '#FFFFFF' }}>
-            {initialsFor(name)}
-          </Text>
-        </View>
+        {showPhoto ? (
+          <Image
+            // `cover`, not the default `contain`: a non-square photo must
+            // fill the circle and crop, never letterbox inside it.
+            onError={() => setPhotoFailed(true)}
+            resizeMode="cover"
+            source={{ uri: photoUrl! }}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: '#E9EDF3',
+            }}
+            testID={`${testIDPrefix}-avatar-photo`}
+          />
+        ) : (
+          <View
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: INK,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            testID={`${testIDPrefix}-avatar-initials`}
+          >
+            <Text style={{ fontSize: 15, fontWeight: '700', color: '#FFFFFF' }}>
+              {initialsFor(name)}
+            </Text>
+          </View>
+        )}
         <OutlineIcon
           color={LABEL}
           shapes={ICON_CHEVRON}

@@ -90,6 +90,8 @@ export interface UserSummaryForEdit {
   role: RoleKey;
   status: UserStatus;
   username: string | null;
+  /** Aadhaar, 12 bare digits as the API stores it — the form regroups it 4-4-4 to display. */
+  personalIdentity: string | null;
   monthlySalary: string | null;
   halfDayRate: string | null;
   rateEffectiveFrom: string | null;

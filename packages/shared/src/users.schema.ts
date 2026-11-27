@@ -10,6 +10,15 @@ import { z } from 'zod';
 
 import { passwordPolicySchema } from './companies.schema';
 import { RoleKey, userStatusSchema } from './enums';
+import {
+  aadhaarSchema,
+  decimalAmountSchema,
+  emailSchema,
+  indianPhoneSchema,
+  isoCalendarDateSchema,
+  personNameSchema,
+  usernameSchema,
+} from './field-formats';
 
 /**
  * `role` on `POST /users` is deliberately narrower than the full
@@ -32,18 +41,21 @@ export type TenantAssignableRoleKey = z.infer<
   typeof tenantAssignableRoleKeySchema
 >;
 
-/** `monthlySalary`/`halfDayRate` — "decimal as string" per contracts/users.md. */
-const decimalStringSchema = z
-  .string()
-  .regex(
-    /^\d{1,10}(\.\d{1,2})?$/,
-    'Must be a decimal number with at most 2 decimal places.',
-  );
+/**
+ * `monthlySalary`/`halfDayRate` — "decimal as string" per
+ * contracts/users.md, now the shared `decimalAmountSchema` so the digits-
+ * only rule and its message are defined once (`field-formats.ts`).
+ */
+const decimalStringSchema = decimalAmountSchema;
 
-/** `rateEffectiveFrom` — "ISO date" per contracts/users.md (date only, no time component). */
-const isoDateSchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be an ISO date (YYYY-MM-DD).');
+/**
+ * `rateEffectiveFrom` — "ISO date" per contracts/users.md (date only, no
+ * time component). `isoCalendarDateSchema` checks the date EXISTS, not just
+ * that it has the right shape: the previous bare `^\d{4}-\d{2}-\d{2}$`
+ * accepted "2026-13-45", which would then have been stored and silently
+ * skewed every salary run that reads it.
+ */
+const isoDateSchema = isoCalendarDateSchema;
 
 /**
  * `halfDayRate` and `rateEffectiveFrom` are a pair — contracts/users.md
@@ -75,8 +87,15 @@ function checkRatePair(
  */
 export const createUserSchema = z
   .object({
-    name: z.string().min(1).max(200),
-    email: z.string().email().max(200).optional(),
+    name: personNameSchema,
+    email: emailSchema.optional(),
+    /**
+     * Aadhaar (`personal_identity`). Optional for every role — an Employee
+     * row created to carry attendance and salary may not have one on file
+     * yet, and blocking their creation on it would be the wrong trade.
+     * Stored as 12 bare digits whatever grouping was typed.
+     */
+    personalIdentity: aadhaarSchema.optional(),
     role: tenantAssignableRoleKeySchema,
     status: userStatusSchema.default('ACTIVE'),
     // From a prior POST /files/avatars upload (contracts/files.md gap #1) —
@@ -86,9 +105,9 @@ export const createUserSchema = z
     halfDayRate: decimalStringSchema.optional(),
     rateEffectiveFrom: isoDateSchema.optional(),
     // Required only when role != EMPLOYEE (FR-017):
-    username: z.string().min(1).max(64).optional(),
+    username: usernameSchema.optional(),
     temporaryPassword: passwordPolicySchema.optional(),
-    mobile: z.string().min(1).max(32).optional(),
+    mobile: indianPhoneSchema.optional(),
   })
   .superRefine((value, ctx) => {
     checkRatePair(value, ctx);
@@ -146,11 +165,12 @@ export type CreateUserInput = z.infer<typeof createUserSchema>;
  */
 export const updateUserSchema = z
   .object({
-    name: z.string().min(1).max(200).optional(),
-    email: z.string().email().max(200).optional(),
+    name: personNameSchema.optional(),
+    email: emailSchema.optional(),
+    personalIdentity: aadhaarSchema.optional(),
     role: tenantAssignableRoleKeySchema.optional(),
     status: userStatusSchema.optional(),
-    username: z.string().min(1).max(64).optional(),
+    username: usernameSchema.optional(),
     photoFileId: z.string().min(1).optional(),
     monthlySalary: decimalStringSchema.optional(),
     halfDayRate: decimalStringSchema.optional(),
