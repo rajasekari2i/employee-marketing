@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FIELD_FORMAT_MESSAGES, FIELD_FORMAT_TESTS } from '@field-sales/shared';
 
 import { ApiError, apiRequest } from '../../api/client';
 import {
@@ -85,6 +86,9 @@ const ICON_PIN: IconShape[] = [
   { circle: [12, 10, 2.6] },
 ];
 
+/** The three fields on this form that carry a format rule (`field-formats.ts`). */
+type FieldErrors = Partial<Record<'ownerName' | 'phone' | 'city', string>>;
+
 export function CreateShopFromFieldScreen() {
   const insets = useSafeAreaInsets();
   const navigation =
@@ -100,6 +104,8 @@ export function CreateShopFromFieldScreen() {
   const [phone, setPhone] = useState('');
   const [addressLine1, setAddressLine1] = useState('');
   const [city, setCity] = useState('');
+
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const [position, setPosition] = useState<Position | null>(null);
   const [positionError, setPositionError] = useState<string | null>(null);
@@ -126,12 +132,58 @@ export function CreateShopFromFieldScreen() {
     };
   }, []);
 
+  /** Clears a message as soon as the value it complained about is valid — see `ShopFormScreen`'s twin for why only already-flagged fields re-check. */
+  function clearWhenFixed(field: keyof FieldErrors, value: string): void {
+    setFieldErrors((prev) => {
+      if (!prev[field]) {
+        return prev;
+      }
+      const trimmed = value.trim();
+      const test =
+        field === 'phone'
+          ? FIELD_FORMAT_TESTS.phone
+          : field === 'city'
+            ? FIELD_FORMAT_TESTS.placeName
+            : FIELD_FORMAT_TESTS.personName;
+      if (trimmed && !test(trimmed)) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  }
+
   const canSave = name.trim().length > 0 && position !== null && !saving;
 
   async function save(): Promise<void> {
     if (!position || !canSave) {
       return;
     }
+
+    // Checked BEFORE `enqueue` below, not after: this screen holds the add
+    // in the outbox first so a dead network still saves it, which means a
+    // body the API will reject with a 400 would sit in the queue failing
+    // forever with nobody in front of it. The same `FIELD_FORMAT_TESTS` the
+    // API's schema is built from, so what passes here passes there.
+    const nextErrors: FieldErrors = {};
+    const ownerTrimmed = ownerName.trim();
+    const phoneTrimmed = phone.trim();
+    const cityTrimmed = city.trim();
+    if (ownerTrimmed && !FIELD_FORMAT_TESTS.personName(ownerTrimmed)) {
+      nextErrors.ownerName = FIELD_FORMAT_MESSAGES.personName;
+    }
+    if (phoneTrimmed && !FIELD_FORMAT_TESTS.phone(phoneTrimmed)) {
+      nextErrors.phone = FIELD_FORMAT_MESSAGES.phone;
+    }
+    if (cityTrimmed && !FIELD_FORMAT_TESTS.placeName(cityTrimmed)) {
+      nextErrors.city = FIELD_FORMAT_MESSAGES.placeName;
+    }
+    setFieldErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) {
+      return;
+    }
+
     setSaving(true);
     setError(null);
 
@@ -239,17 +291,26 @@ export function CreateShopFromFieldScreen() {
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <View style={{ flex: 1 }}>
               <Field
+                error={fieldErrors.ownerName}
                 label="Owner name"
-                onChangeText={setOwnerName}
+                onChangeText={(text) => {
+                  setOwnerName(text);
+                  clearWhenFixed('ownerName', text);
+                }}
                 value={ownerName}
               />
             </View>
             <View style={{ flex: 1 }}>
               <Field
+                error={fieldErrors.phone}
                 keyboardType="phone-pad"
                 label="Phone"
+                maxLength={10}
                 mono
-                onChangeText={setPhone}
+                onChangeText={(text) => {
+                  setPhone(text);
+                  clearWhenFixed('phone', text);
+                }}
                 value={phone}
               />
             </View>
@@ -266,7 +327,15 @@ export function CreateShopFromFieldScreen() {
             onChangeText={setAddressLine1}
             value={addressLine1}
           />
-          <Field label="City" onChangeText={setCity} value={city} />
+          <Field
+            error={fieldErrors.city}
+            label="City"
+            onChangeText={(text) => {
+              setCity(text);
+              clearWhenFixed('city', text);
+            }}
+            value={city}
+          />
         </Group>
 
         <Group title="Location">
@@ -376,19 +445,28 @@ function Group({
   );
 }
 
-/** `.lbl` + `.inp`, board 4.9. */
+/**
+ * `.lbl` + `.inp`, board 4.9 — plus the error state the board does not
+ * draw: the border turns `DANGER` and the message sits under the input at
+ * the board's 12px caption size. Same treatment as the admin's
+ * `ShopFormScreen`, so a format rule looks the same wherever it is hit.
+ */
 function Field({
   label,
   value,
   onChangeText,
   mono = false,
   keyboardType,
+  maxLength,
+  error,
 }: {
   label: string;
   value: string;
   onChangeText: (next: string) => void;
   mono?: boolean;
   keyboardType?: 'phone-pad';
+  maxLength?: number;
+  error?: string;
 }) {
   return (
     <View>
@@ -404,12 +482,13 @@ function Field({
       </Text>
       <TextInput
         keyboardType={keyboardType}
+        maxLength={maxLength}
         onChangeText={onChangeText}
         style={{
           width: '100%',
           height: 48,
           borderWidth: 1.5,
-          borderColor: FIELD_BORDER,
+          borderColor: error ? DANGER : FIELD_BORDER,
           borderRadius: 12,
           paddingHorizontal: 12,
           fontSize: 15,
@@ -420,6 +499,13 @@ function Field({
         }}
         value={value}
       />
+      {error ? (
+        <Text
+          style={{ fontSize: 12, color: DANGER, marginTop: 5, lineHeight: 16 }}
+        >
+          {error}
+        </Text>
+      ) : null}
     </View>
   );
 }

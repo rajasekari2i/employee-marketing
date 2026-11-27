@@ -11,7 +11,11 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { apiRequest, generateIdempotencyKey } from '../../api/client';
+import {
+  apiRequest,
+  generateIdempotencyKey,
+  resolveFileUrl,
+} from '../../api/client';
 import { ROLE_LABELS } from '../admin/adminDesign';
 import { AccountMenu } from '../../components/AccountMenu';
 import { ExecutiveBottomNav } from '../../components/ExecutiveBottomNav';
@@ -160,6 +164,8 @@ interface TodayResponse {
 /** Only the field this screen needs from `GET /me` — the header greeting. */
 interface MeResponse {
   name: string;
+  /** `?thumb=1` variant — what the 44px `AccountMenu` avatar renders. */
+  photoThumbUrl: string | null;
 }
 
 export function TodaysBeatScreen() {
@@ -186,6 +192,7 @@ export function TodaysBeatScreen() {
   const [tab, setTab] = useState<Tab>('todo');
   const [confirmingEnd, setConfirmingEnd] = useState(false);
   const [name, setName] = useState<string | undefined>(undefined);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
 
   // Ticks once a minute so the elapsed time stays current. The value itself
   // is always derived from `startedAt`, never counted up — so backgrounding
@@ -200,10 +207,14 @@ export function TodaysBeatScreen() {
     // The stored session carries only the tokens and the role, so the
     // display name comes from /me — the same source the admin home uses.
     void apiRequest<MeResponse>('/me')
-      .then((me) => setName(me.name))
+      .then((me) => {
+        setName(me.name);
+        setPhotoUrl(me.photoThumbUrl ? resolveFileUrl(me.photoThumbUrl) : null);
+      })
       .catch(() => {
         // Best-effort: the greeting degrades to the time of day without a
-        // name rather than blocking the screen.
+        // name rather than blocking the screen, and the avatar falls back
+        // to initials.
       });
   }, []);
 
@@ -403,6 +414,7 @@ export function TodaysBeatScreen() {
                 name={name}
                 onLogoutPress={() => void handleLogout()}
                 onProfilePress={() => navigation.navigate('Profile')}
+                photoUrl={photoUrl}
                 roleLabel={ROLE_LABELS.MARKETING_EXECUTIVE}
                 testIDPrefix="executive"
               />

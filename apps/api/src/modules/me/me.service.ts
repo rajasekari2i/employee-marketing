@@ -33,7 +33,15 @@ export interface MeResult {
   role: RoleKey;
   companyId: string | null;
   status: UserStatus;
+  /** Full-size, for the profile screen's 86px avatar. */
   photoUrl: string | null;
+  /**
+   * The same photo at thumbnail size (`?thumb=1`), for the 44px avatar in
+   * every home screen's `AccountMenu`. A separate field rather than
+   * `photoUrl` switched to a thumb: the profile screen renders the same
+   * photo four times larger and would visibly blur.
+   */
+  photoThumbUrl: string | null;
   permissions: string[];
   company: { code: string; name: string; timezone: string } | null;
 }
@@ -172,6 +180,14 @@ export class MeService {
       status: user.status as UserStatus,
       photoUrl: user.photoId
         ? this.filesService.signFileUrl(user.photoId, viewerId, user.companyId)
+        : null,
+      photoThumbUrl: user.photoId
+        ? this.filesService.signFileUrl(
+            user.photoId,
+            viewerId,
+            user.companyId,
+            true,
+          )
         : null,
       permissions: user.role.permissions,
       // `User.company` is a nullable relation that is only ever non-null

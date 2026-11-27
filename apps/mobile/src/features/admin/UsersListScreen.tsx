@@ -4,6 +4,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   Pressable,
   Text,
   TextInput,
@@ -12,7 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { RoleKey, UserStatus } from '@field-sales/shared';
 
-import { apiRequest } from '../../api/client';
+import { apiRequest, resolveFileUrl } from '../../api/client';
 import { AdminBottomNav } from '../../components/AdminBottomNav';
 import {
   OutlineIcon,
@@ -43,6 +44,8 @@ interface UserListItem {
   status: UserStatus;
   username: string | null;
   email: string | null;
+  /** Aadhaar, 12 bare digits from the API — `UserFormScreen` regroups it 4-4-4 to display. */
+  personalIdentity: string | null;
   monthlySalary: string | null;
   halfDayRate: string | null;
   rateEffectiveFrom: string | null;
@@ -82,6 +85,74 @@ function initialsFor(name: string): string {
   const last =
     words.length > 1 ? (words[words.length - 1]?.charAt(0) ?? '') : '';
   return (first + last).toUpperCase();
+}
+
+/**
+ * The 40px row avatar: the user's photo when they have one, their initials
+ * otherwise.
+ *
+ * `photoUrl` is already the `?thumb=1` variant — `UsersService.toListItem`
+ * passes `thumb: true` for every list row, so this renders the small
+ * encoding rather than downloading a full-size photo per row.
+ *
+ * A component rather than inline JSX because the load-failure fallback
+ * needs per-row state: a signed URL can fail on its own (expired token,
+ * the file pruned by the photo-cleanup job, no connection), and `<Image>`
+ * renders a blank circle in that case, which reads as a broken avatar
+ * rather than as "no photo". Same treatment as `AccountMenu`'s.
+ */
+function RowAvatar({
+  name,
+  photoUrl,
+  colors,
+}: {
+  name: string;
+  photoUrl: string | null;
+  colors: { bg: string; fg: string };
+}) {
+  const [failed, setFailed] = useState(false);
+  // A new url deserves a fresh attempt — a replaced photo must not keep
+  // showing initials because the previous one failed once.
+  useEffect(() => setFailed(false), [photoUrl]);
+
+  if (photoUrl && !failed) {
+    return (
+      <Image
+        // `cover`, not the default: a non-square photo fills the circle and
+        // crops rather than letterboxing inside it.
+        onError={() => setFailed(true)}
+        resizeMode="cover"
+        source={{ uri: resolveFileUrl(photoUrl) }}
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 20,
+          backgroundColor: colors.bg,
+          flexShrink: 0,
+        }}
+        testID="users-list-row-photo"
+      />
+    );
+  }
+
+  return (
+    <View
+      style={{
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: colors.bg,
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+      }}
+      testID="users-list-row-initials"
+    >
+      <Text style={{ fontSize: 14, fontWeight: '700', color: colors.fg }}>
+        {initialsFor(name)}
+      </Text>
+    </View>
+  );
 }
 
 /** Active: #E3EBFC/#1E3A8A (avatar + status chip + name); Inactive: #E9EDF3/#3A4353, dimmed name. */
@@ -344,27 +415,11 @@ export function UsersListScreen() {
                     }}
                     testID={`users-list-row-${item.id}`}
                   >
-                    <View
-                      style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 20,
-                        backgroundColor: colors.bg,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 14,
-                          fontWeight: '700',
-                          color: colors.fg,
-                        }}
-                      >
-                        {initialsFor(item.name)}
-                      </Text>
-                    </View>
+                    <RowAvatar
+                      colors={colors}
+                      name={item.name}
+                      photoUrl={item.photoUrl}
+                    />
                     <View style={{ flexGrow: 1, minWidth: 0, gap: 2 }}>
                       <Text
                         style={{

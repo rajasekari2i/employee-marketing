@@ -91,10 +91,13 @@ Adds one extra stop to the caller's own running day. Optionally creates the shop
 const newShopSchema = z
   .object({
     name: z.string().min(1).max(200),
-    ownerName: z.string().min(1).max(200).optional(),
-    phone: z.string().min(1).max(32).optional(),
+    // Field formats are shared with `POST /shops` — see the "Field formats"
+    // table in `specs/002-shops-crud/contracts/shops.md`. Same rules, same
+    // messages, one definition (`packages/shared/src/field-formats.ts`).
+    ownerName: personNameSchema.optional(),   // letters, spaces, . ' -
+    phone: indianPhoneSchema.optional(),      // 10 digits, first 6-9
     addressLine1: z.string().min(1).max(200).optional(),
-    city: z.string().min(1).max(100).optional(),
+    city: placeNameSchema.optional(),         // letters, spaces, . ' - &
     /** The executive's position, pre-filled by the form (FR-016). */
     latitude: z.number().min(-90).max(90),
     longitude: z.number().min(-180).max(180),

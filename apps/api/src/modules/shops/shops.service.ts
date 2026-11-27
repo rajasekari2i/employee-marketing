@@ -53,13 +53,41 @@ export interface ShopListItem {
    * list), never editable from here — this is read-only, display-only data.
    */
   beatPlanNames: string[];
-  /** `id` is each `ShopPhoto` row's own id — needed by `DELETE /shops/:id/photos/:photoId`, not just display. */
-  photos: Array<{ id: string; url: string }>;
+  /**
+   * `id` is each `ShopPhoto` row's own id — needed by `DELETE
+   * /shops/:id/photos/:photoId`, not just display.
+   *
+   * Two URLs, because the two places a shop photo is shown want different
+   * encodings: `url` is the `?thumb=1` variant for the 64px strip and the
+   * list card, `fullUrl` the original for the photo sheet's 300px-tall
+   * pager and the full-screen viewer, where a thumbnail is visibly soft.
+   */
+  photos: Array<{
+    id: string;
+    url: string;
+    fullUrl: string;
+    /** `ShopPhoto.createdAt`, ISO — the viewer's "Added <date>" caption. */
+    createdAt: string;
+  }>;
 }
 
 export interface ShopListResult {
   items: ShopListItem[];
   nextCursor: string | null;
+  /**
+   * How many shops match the CURRENT filters in total, not just on this
+   * page. The directory header reads this; before it existed the screen
+   * counted a `?limit=100` fetch client-side, so any company past 100 shops
+   * was told it had exactly 100.
+   */
+  total: number;
+  /**
+   * Company-wide count of shops with no pin, independent of the filters in
+   * play. Deliberately not filtered: it labels the "No pin · N" chip, which
+   * is a filter the admin has not applied yet — scoping it to the current
+   * filter would make the chip read 0 whenever some other filter is on.
+   */
+  noPinTotal: number;
 }
 
 /** The subset of a looked-up `Shop` row {@link ShopsService.toListItem} needs. */
@@ -81,7 +109,7 @@ interface ShopRow {
   verificationRadiusMeters: number | null;
   isActive: boolean;
   beatPlanShops: Array<{ beatPlan: { name: string } }>;
-  photos: Array<{ id: string; fileId: string }>;
+  photos: Array<{ id: string; fileId: string; createdAt: Date }>;
 }
 
 /**
@@ -154,22 +182,39 @@ export class ShopsService {
         : {}),
     };
 
+    // One row MORE than asked for: its presence is what proves another page
+    // exists. The previous `rows.length === query.limit` test could not tell
+    // "exactly one full page" from "a full page and more to come", so a list
+    // whose size was a multiple of the limit always handed back a cursor
+    // that fetched nothing — a wasted request, and an infinite-scroll
+    // spinner that appeared for no reason at the bottom.
     const rows = await tx.shop.findMany({
       where,
-      take: query.limit,
+      take: query.limit + 1,
       ...(query.cursor ? { skip: 1, cursor: { id: query.cursor } } : {}),
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      // Newest first (FR: the directory shows the most recently added shop
+      // at the top). `id` is the tiebreaker, and it is what makes the cursor
+      // deterministic: two shops created in the same millisecond would
+      // otherwise be free to swap places between pages, which either
+      // duplicates one or skips one.
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       select: this.rowSelect,
     });
 
-    const items = rows.map((row) => this.toListItem(companyId, callerId, row));
+    const hasMore = rows.length > query.limit;
+    const page = hasMore ? rows.slice(0, query.limit) : rows;
+    const items = page.map((row) => this.toListItem(companyId, callerId, row));
+
+    const [total, noPinTotal] = await Promise.all([
+      tx.shop.count({ where }),
+      tx.shop.count({ where: { locationStatus: 'NONE' } }),
+    ]);
 
     return {
       items,
-      nextCursor:
-        rows.length === query.limit
-          ? (rows[rows.length - 1]?.id ?? null)
-          : null,
+      nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,
+      total,
+      noPinTotal,
     };
   }
 
@@ -418,7 +463,7 @@ export class ShopsService {
     },
     photos: {
       orderBy: { sortOrder: 'asc' as const },
-      select: { id: true, fileId: true },
+      select: { id: true, fileId: true, createdAt: true },
     },
   } satisfies Prisma.ShopSelect;
 
@@ -476,6 +521,12 @@ export class ShopsService {
           companyId,
           true,
         ),
+        fullUrl: this.filesService.signFileUrl(
+          photo.fileId,
+          viewerId,
+          companyId,
+        ),
+        createdAt: photo.createdAt.toISOString(),
       })),
     };
   }

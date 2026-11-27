@@ -249,6 +249,11 @@ model User {
   username     String?
   passwordHash String?    @map("password_hash")
   mobile       String?
+  // Aadhaar, stored as 12 bare digits (the UI groups it 4-4-4 for reading
+  // only). Nullable: it is optional on every role, and every row that
+  // existed before this column has none. Redacted out of logs by
+  // `deep-redact.ts`'s SENSITIVE_KEYS (Constitution rule 9).
+  personalIdentity String? @map("personal_identity")
   photoId      String?    @unique @map("photo_id")
   status       UserStatus @default(ACTIVE)
 

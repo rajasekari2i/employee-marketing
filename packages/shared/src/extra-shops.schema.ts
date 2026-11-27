@@ -27,6 +27,12 @@
 
 import { z } from 'zod';
 
+import {
+  indianPhoneSchema,
+  personNameSchema,
+  placeNameSchema,
+} from './field-formats';
+
 /**
  * `GET /shops/nearby` query (contracts/extra-shops.md).
  *
@@ -69,10 +75,13 @@ export type NearbyShopsQuery = z.infer<typeof nearbyShopsQuerySchema>;
 const newShopSchema = z
   .object({
     name: z.string().min(1).max(200),
-    ownerName: z.string().min(1).max(200).optional(),
-    phone: z.string().min(1).max(32).optional(),
+    // Same field formats the Company Admin's form enforces — a shop
+    // created from the field is the same row, so "Owner 123" must not be
+    // reachable through the door the admin's form closed.
+    ownerName: personNameSchema.optional(),
+    phone: indianPhoneSchema.optional(),
     addressLine1: z.string().min(1).max(200).optional(),
-    city: z.string().min(1).max(100).optional(),
+    city: placeNameSchema.optional(),
     latitude: z.number().min(-90).max(90),
     longitude: z.number().min(-180).max(180),
     /** Recorded, and gated server-side against the company's maximum. */

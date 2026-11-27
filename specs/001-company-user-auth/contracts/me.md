@@ -9,11 +9,21 @@ Base path `/api/v1/me`. Any authenticated role.
 {
   id: string; name: string; email: string | null; username: string | null;
   role: RoleKey; companyId: string | null; status: UserStatus;
-  photoUrl: string | null;
+  photoUrl: string | null;        // full size — the profile screen's 86px avatar
+  photoThumbUrl: string | null;   // same photo, `?thumb=1` — every home screen's 44px AccountMenu avatar
   permissions: string[];
   company: { code: string; name: string; timezone: string } | null;   // null only for SYSTEM_ADMIN
 }
 ```
+
+Both photo fields are signed, short-lived `/files/:id?token=` URLs and are
+`null` for a user who has not uploaded a photo — in which case the avatar
+falls back to the person's initials. Two fields rather than one: the profile
+screen renders the same photo four times larger than the account menu does
+and would visibly blur on a thumbnail. `GET /files/:id?thumb=1` falls back to
+the full-size object when a row has no `thumbKey`, so the thumb URL is always
+safe to request.
+
 `name` and `email` are returned but are **read-only** from every mutation endpoint available to the user themself (FR-021) — only a Company Admin can change them, via `PATCH /users/:id`.
 
 ## `PATCH /me/photo`

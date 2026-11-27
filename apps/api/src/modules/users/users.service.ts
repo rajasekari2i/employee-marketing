@@ -51,6 +51,8 @@ export interface UserListItem {
   status: UserStatus;
   username: string | null;
   email: string | null;
+  /** Aadhaar, 12 bare digits — the mobile form regroups it 4-4-4 for display. */
+  personalIdentity: string | null;
   monthlySalary: string | null;
   halfDayRate: string | null;
   /** The current (open-ended) `UserSalaryRate` row's `effectiveFrom`, `YYYY-MM-DD` — `null` iff `halfDayRate` is. */
@@ -84,6 +86,7 @@ interface UserRow {
   name: string;
   email: string | null;
   username: string | null;
+  personalIdentity: string | null;
   status: string;
   photoId: string | null;
   monthlySalary: { toString(): string } | null;
@@ -176,6 +179,7 @@ export class UsersService {
         name: true,
         email: true,
         username: true,
+        personalIdentity: true,
         status: true,
         photoId: true,
         monthlySalary: true,
@@ -238,6 +242,7 @@ export class UsersService {
         name: input.name,
         email: input.email,
         username: input.username,
+        personalIdentity: input.personalIdentity,
         passwordHash,
         mobile: input.mobile,
         photoId: input.photoFileId,
@@ -276,6 +281,7 @@ export class UsersService {
         name: user.name,
         email: user.email,
         username: user.username,
+        personalIdentity: user.personalIdentity,
         status: user.status,
         photoId: user.photoId,
         monthlySalary: user.monthlySalary,
@@ -365,6 +371,7 @@ export class UsersService {
         email: input.email,
         roleId,
         username: input.username,
+        personalIdentity: input.personalIdentity,
         status: input.status,
         photoId: input.photoFileId,
         monthlySalary: input.monthlySalary,
@@ -375,6 +382,7 @@ export class UsersService {
         name: true,
         email: true,
         username: true,
+        personalIdentity: true,
         status: true,
         photoId: true,
         monthlySalary: true,
@@ -425,6 +433,7 @@ export class UsersService {
         name: true,
         email: true,
         username: true,
+        personalIdentity: true,
         status: true,
         photoId: true,
         monthlySalary: true,
@@ -672,6 +681,7 @@ export class UsersService {
       status: row.status as UserStatus,
       username: row.username,
       email: row.email,
+      personalIdentity: row.personalIdentity,
       monthlySalary: row.monthlySalary ? row.monthlySalary.toString() : null,
       halfDayRate,
       rateEffectiveFrom,

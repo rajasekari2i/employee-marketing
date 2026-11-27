@@ -1,0 +1,17 @@
+-- Aadhaar on `users` (`personal_identity`), captured from the Company
+-- Admin's "New user" screen.
+--
+-- Nullable, with no backfill: the field is optional for every role (an
+-- Employee row created to carry attendance and salary may not have one on
+-- file yet), and every user created before this migration has none.
+--
+-- Stored as 12 bare digits. The 4-4-4 grouping the form shows while typing
+-- is a display concern only — `aadhaarSchema` (packages/shared) strips the
+-- spaces before the value ever reaches here, so there is exactly one
+-- spelling in the column and a lookup never has to care how it was typed.
+--
+-- No UNIQUE constraint on purpose. It would be a cross-company one (this
+-- table's tenant key is nullable for SYSTEM_ADMIN), and the same person
+-- legitimately appears under two distributors. If duplicate-detection is
+-- wanted later it belongs in service code, scoped to `company_id`.
+ALTER TABLE "users" ADD COLUMN "personal_identity" TEXT;

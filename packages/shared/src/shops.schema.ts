@@ -14,6 +14,13 @@
 import { z } from 'zod';
 
 import { locationSourceSchema } from './enums';
+import {
+  indianPhoneSchema,
+  indianPostalCodeSchema,
+  personNameSchema,
+  placeNameSchema,
+  radiusMetersSchema,
+} from './field-formats';
 
 /** Shared by `createShopSchema` and `updateShopSchema`. */
 const shopLocationSchema = z.object({
@@ -36,14 +43,19 @@ const shopFieldsSchema = {
   shopCode: z.string().min(1).max(64),
   name: z.string().min(1).max(200),
   isActive: z.boolean().default(true),
-  ownerName: z.string().min(1).max(200).optional(),
-  phone: z.string().min(1).max(32).optional(),
+  // The five below are format-checked by `field-formats.ts` rather than by
+  // a bare `z.string()`, so the API rejects "Owner 123" / "98765" / "600
+  // 0011" with the same sentence the form shows. `addressLine1/2` stay
+  // free-text on purpose — a street address legitimately contains digits,
+  // `/`, `,` and `-`.
+  ownerName: personNameSchema.optional(),
+  phone: indianPhoneSchema.optional(),
   addressLine1: z.string().min(1).max(200).optional(),
   addressLine2: z.string().min(1).max(200).optional(),
-  city: z.string().min(1).max(100).optional(),
-  state: z.string().min(1).max(100).optional(),
-  postalCode: z.string().min(1).max(16).optional(),
-  verificationRadiusMeters: z.number().int().positive().optional(),
+  city: placeNameSchema.optional(),
+  state: placeNameSchema.optional(),
+  postalCode: indianPostalCodeSchema.optional(),
+  verificationRadiusMeters: radiusMetersSchema.optional(),
   location: shopLocationSchema.optional(),
 };
 
